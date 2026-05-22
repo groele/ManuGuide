@@ -1,0 +1,510 @@
+<UserControl x:Class="Manuscript_guide.UI.TaskPaneWPFControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="480"
+             Background="#F3F2F1"
+             FontFamily="Segoe UI, Microsoft YaHei">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Premium Header Area -->
+        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,0,0,1" Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="txtTitleIcon" Text="⚙️" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="txtTitleText" Text="排版助手 - 专项检查通道" FontWeight="SemiBold" FontSize="14" Foreground="#323130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="#605E5C" Content="✕" FontSize="12" FontWeight="Bold" Cursor="Hand" Click="ClosePane_Click" VerticalAlignment="Center" ToolTip="关闭 Manuscript Guide 侧边栏。"/>
+            </Grid>
+        </Border>
+
+        <!-- Main Body Area -->
+        <Grid Grid.Row="1">
+            <!-- 1. Overview Panel -->
+            <Grid x:Name="panelOverview" Visibility="Visible" Margin="16,40">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="📖" FontSize="48" HorizontalAlignment="Center" Foreground="#A19F9D" Margin="0,0,0,16"/>
+                    <TextBlock Text="未激活专项诊断模块" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" Foreground="#323130" Margin="0,0,0,10"/>
+                    <TextBlock TextAlignment="Center" LineHeight="18" FontSize="11" Foreground="#605E5C">
+                        请单击顶栏 Ribbon 功能区中的<LineBreak/>
+                        <Bold Foreground="#0078D4">标点格式、大小写规范、横线与混排、数据与数值、变量斜体、角标改写、语病措辞</Bold><LineBreak/>
+                        按钮，启动对应的学术论文专项排版审查。
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+
+            <!-- 2. Dynamic Active Diagnostics Panel -->
+            <Grid x:Name="panelActiveScan" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Current Module Local Config Box -->
+                <Border Grid.Row="0" Margin="16,14,16,8" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="6" Padding="14,12">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <TextBlock Text="当前模块规则配置" FontWeight="SemiBold" FontSize="12" Foreground="#323130" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="lblPreferenceLink" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Hyperlink Click="GotoSettings_Click" FontSize="11" TextDecorations="Underline" Foreground="#0078D4">系统高级设置</Hyperlink>
+                            </TextBlock>
+                        </Grid>
+
+                        <!-- Config Options placeholders populated on module load -->
+                        <StackPanel x:Name="panelModuleRules" Margin="0,0,0,8">
+                            <!-- Populated dynamically via code-behind -->
+                        </StackPanel>
+
+                        <!-- Module quick stats and fix all -->
+                        <Border BorderBrush="#F3F2F1" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,4,0,0">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="未解决: " FontSize="12" Foreground="#605E5C"/>
+                                    <TextBlock x:Name="txtErrCount" Text="0" FontWeight="Bold" FontSize="12" Foreground="#E03B2B"/>
+                                    <TextBlock Text=" 处" FontSize="12" Foreground="#605E5C"/>
+                                </StackPanel>
+                                <Button x:Name="btnFixAllModule" Content="一键修复本模块" Background="#0078D4" Foreground="#FFFFFF" BorderThickness="0" Padding="14,6" FontSize="12" FontWeight="SemiBold" Cursor="Hand" HorizontalAlignment="Right" Click="FixAllModule_Click" ToolTip="批量接受当前模块中可自动修复的问题。修改后会保留淡色底纹和 Word 批注，方便复核。">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="4"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- List box containing issue cards -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="16,6">
+                    <ItemsControl x:Name="itemsIssueList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,12" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="6" Padding="14" SnapsToDevicePixels="True"
+                                        Visibility="{Binding CardVisibility}">
+                                    <!-- Dynamic Left Border indicator based on issue category -->
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Type}" Value="punc">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#00E5E5"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="cap">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#3399FF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="dash">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#FF5C5C"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="data">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#FF66FF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="ital">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#5CFF5C"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="sub">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#B84DFF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Type}" Value="word">
+                                                    <Setter Property="BorderThickness" Value="4,1,1,1"/>
+                                                    <Setter Property="BorderBrush" Value="#33B2B2"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    
+                                    <Grid>
+                                        <!-- Normal Diagnosed State -->
+                                        <StackPanel x:Name="panelNormalState" Visibility="{Binding NormalStateVisibility}">
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0" CornerRadius="3" Background="#F3F2F1" Padding="8,3" HorizontalAlignment="Left" MaxWidth="300">
+                                                    <TextBlock Text="{Binding RuleTitle}" FontSize="11" FontWeight="SemiBold" Foreground="#605E5C" TextTrimming="CharacterEllipsis"/>
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="{Binding RuleId}" FontSize="10" Foreground="#A19F9D" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,0,0" TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
+
+                                            <!-- Context snippet with highlighted issue -->
+                                            <Border Background="#F9FBF9" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
+                                                <TextBlock Text="{Binding Context}" FontSize="12" TextWrapping="Wrap" Foreground="#323130" LineHeight="18"/>
+                                            </Border>
+
+                                            <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="#605E5C" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,10"/>
+
+                                            <Grid Margin="0,2,0,0">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Border Grid.Row="0" Background="#F6FDF6" BorderBrush="#D7EBD7" BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,0,0,10">
+                                                    <StackPanel>
+                                                        <TextBlock Text="建议修改为" FontSize="10" FontWeight="SemiBold" Foreground="#6B8E6B" Margin="0,0,0,4"/>
+                                                        <TextBlock Text="{Binding RecommendFix}" FontSize="12" FontWeight="SemiBold" Foreground="#107C41" TextWrapping="Wrap" LineHeight="18"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                
+                                                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                                    <Button Content="忽略" Background="#F3F2F1" BorderBrush="#EDEBE9" BorderThickness="1" Padding="12,5" Margin="0,0,6,0" FontSize="11" Cursor="Hand" Click="IgnoreIssue_Click" Tag="{Binding IssueId}" ToolTip="跳过此条建议，并从当前问题列表中隐藏。不会修改正文。"/>
+                                                    <Button Content="接受修改" Background="#107C41" Foreground="#FFFFFF" BorderThickness="0" Padding="14,6" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Click="AcceptIssue_Click" Tag="{Binding IssueId}">
+                                                        <Button.ToolTip>
+                                                            <ToolTip>
+                                                                <StackPanel MaxWidth="320">
+                                                                    <TextBlock Text="接受此条修改" FontWeight="SemiBold" FontSize="12" Foreground="#323130" Margin="0,0,0,6"/>
+                                                                    <TextBlock Text="修改前" FontSize="10" FontWeight="SemiBold" Foreground="#A4262C"/>
+                                                                    <TextBlock Text="{Binding PlacementTarget.DataContext.OriginalText, RelativeSource={RelativeSource AncestorType=ToolTip}}" FontSize="11" Foreground="#605E5C" TextWrapping="Wrap" Margin="0,2,0,6"/>
+                                                                    <TextBlock Text="修改后" FontSize="10" FontWeight="SemiBold" Foreground="#107C41"/>
+                                                                    <TextBlock Text="{Binding PlacementTarget.DataContext.RecommendFix, RelativeSource={RelativeSource AncestorType=ToolTip}}" FontSize="11" Foreground="#107C41" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </ToolTip>
+                                                        </Button.ToolTip>
+                                                        <Button.Resources>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="CornerRadius" Value="3"/>
+                                                            </Style>
+                                                        </Button.Resources>
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <!-- Corrected Faded State (Success card) -->
+                                        <StackPanel x:Name="panelCorrectedState" Visibility="{Binding CorrectedStateVisibility}">
+                                            <Border CornerRadius="4" Background="#DFF6DD" Padding="12" Margin="-8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="✔" Foreground="#107C41" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="已成功应用改写推荐" FontSize="12" FontWeight="SemiBold" Foreground="#107C41"/>
+                                                        <TextBlock Text="底纹已转为淡色留痕方便复核" FontSize="10" Foreground="#605E5C"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="3" Content="撤销" Background="Transparent" Foreground="#A19F9D" BorderThickness="0" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Click="UndoIssue_Click" Tag="{Binding IssueId}" VerticalAlignment="Center" ToolTip="撤销此条自动修改，并恢复原诊断底纹。"/>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <Border x:Name="emptyScanState" Grid.Row="1" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="1"
+                        CornerRadius="6" Padding="22" Margin="16,18" VerticalAlignment="Top" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="未发现待处理问题" FontSize="13" FontWeight="SemiBold" Foreground="#107C41" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                        <TextBlock Text="当前专项检查已完成。若刚调整过文稿内容，可从 Ribbon 再次运行本模块扫描。"
+                                   FontSize="11" Foreground="#605E5C" TextWrapping="Wrap" TextAlignment="Center" LineHeight="16"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Footer statistics -->
+                <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="0,1,0,0" Padding="16,10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="txtFooterStatus" Text="专项诊断" FontSize="11" Foreground="#605E5C" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <ProgressBar x:Name="progressAudit" Grid.Row="1" Height="4" Maximum="100" Value="0" Foreground="#107C41" Background="#EDEBE9" BorderThickness="0"/>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 3. Keyword Search Panel -->
+            <Grid x:Name="panelKeyword" Visibility="Collapsed" Margin="12">
+                <StackPanel>
+                    <TextBlock Text="输入查找关键词（半角逗号分隔）" FontSize="11" FontWeight="SemiBold" Foreground="#323130" Margin="0,0,0,4"/>
+                    <TextBox x:Name="txtKeywordInput" Height="26" VerticalContentAlignment="Center" Padding="4,0" FontSize="11" Margin="0,0,0,10"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <CheckBox x:Name="chkCaseSensitive" Content="区分大小写" FontSize="11" Margin="0,0,16,0" IsChecked="True"/>
+                        <CheckBox x:Name="chkWholeWord" Content="全字匹配" FontSize="11" IsChecked="False"/>
+                    </StackPanel>
+
+                    <TextBlock Text="选择高亮标记底色 (Highlight)" FontSize="11" FontWeight="SemiBold" Foreground="#323130" Margin="0,0,0,4"/>
+                    <!-- Color Options -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <RadioButton x:Name="radColorYellow" Content="黄色" FontSize="11" Margin="0,0,12,0" IsChecked="True" Foreground="#A18000"/>
+                        <RadioButton x:Name="radColorGreen" Content="亮绿" FontSize="11" Margin="0,0,12,0" Foreground="#107C41"/>
+                        <RadioButton x:Name="radColorCyan" Content="青色" FontSize="11" Margin="0,0,12,0" Foreground="#0078D7"/>
+                        <RadioButton x:Name="radColorPink" Content="粉色" FontSize="11" Foreground="#B4009E"/>
+                    </StackPanel>
+
+                    <Button Content="开始专项查找与标记" Background="#D87C00" Foreground="#FFFFFF" BorderThickness="0" Padding="0,8" FontSize="12" FontWeight="SemiBold" Cursor="Hand" Click="StartKeywordSearch_Click" Margin="0,0,0,16" ToolTip="按输入的关键词扫描全文，并用所选颜色高亮所有匹配位置。不会改写正文。">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+
+                    <Border x:Name="boxSearchStats" Visibility="Collapsed" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="6" Padding="10">
+                        <StackPanel>
+                            <TextBlock Text="查找统计结果" FontWeight="SemiBold" FontSize="11" Foreground="#323130" Margin="0,0,0,6"/>
+                            <TextBlock x:Name="txtSearchStatsResult" Text="共查找到 0 处匹配的关键词。" FontSize="11" Foreground="#605E5C" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <!-- 4. Advanced Settings Panel -->
+            <Grid x:Name="panelRules" Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,16,16,28">
+                        <StackPanel.Resources>
+                            <Style x:Key="AdvancedCard" TargetType="Border">
+                                <Setter Property="Background" Value="#FFFFFF"/>
+                                <Setter Property="BorderBrush" Value="#EDEBE9"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="CornerRadius" Value="6"/>
+                                <Setter Property="Padding" Value="14"/>
+                                <Setter Property="Margin" Value="0,0,0,12"/>
+                            </Style>
+                            <Style x:Key="AdvancedSectionHeader" TargetType="Border">
+                                <Setter Property="BorderBrush" Value="#EDEBE9"/>
+                                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                <Setter Property="Margin" Value="0,0,0,12"/>
+                                <Setter Property="Padding" Value="0,0,0,8"/>
+                            </Style>
+                            <Style x:Key="AdvancedSectionTitle" TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="FontSize" Value="13"/>
+                                <Setter Property="Foreground" Value="#323130"/>
+                            </Style>
+                            <Style x:Key="AdvancedBodyText" TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="11"/>
+                                <Setter Property="Foreground" Value="#605E5C"/>
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="LineHeight" Value="17"/>
+                            </Style>
+                            <Style x:Key="AdvancedHintText" TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="10"/>
+                                <Setter Property="Foreground" Value="#8A8886"/>
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="LineHeight" Value="15"/>
+                                <Setter Property="Margin" Value="0,8,0,0"/>
+                            </Style>
+                        </StackPanel.Resources>
+
+                        <TextBlock Text="系统个性化与高级规则配置" FontWeight="SemiBold" FontSize="16" Foreground="#323130" Margin="0,0,0,4"/>
+                        <TextBlock Text="调整诊断方式、颜色、白名单和团队配置。保存后，这些设置会影响后续扫描、留痕和一键修复。" Style="{StaticResource AdvancedBodyText}" Margin="0,0,0,14"/>
+
+                        <!-- Section 0.5: Diagnostic Colors Customization -->
+                        <Border Style="{StaticResource AdvancedCard}">
+                            <StackPanel>
+                                <Border Style="{StaticResource AdvancedSectionHeader}">
+                                    <TextBlock Text="诊断高亮色彩自定义" Style="{StaticResource AdvancedSectionTitle}"/>
+                                </Border>
+                                <StackPanel Margin="0,0,0,2">
+                                    <!-- Row 1: Punc -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="1. 标点与格式 (青色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorPunc" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#00E5E5" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="punc" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorPunc" Width="72" Height="26" FontSize="11" Text="#00E5E5" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="punc"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    
+                                    <!-- Row 2: Cap -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="2. 大小写规范 (蓝色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorCap" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#3399FF" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="cap" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorCap" Width="72" Height="26" FontSize="11" Text="#3399FF" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="cap"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 3: Dash -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="3. 横线与混排 (红色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorDash" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#FF5C5C" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="dash" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorDash" Width="72" Height="26" FontSize="11" Text="#FF5C5C" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="dash"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 4: Data -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="4. 数据与数值 (粉色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorData" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#FF66FF" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="data" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorData" Width="72" Height="26" FontSize="11" Text="#FF66FF" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="data"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 5: Ital -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="5. 变量与斜体 (绿色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorItal" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#5CFF5C" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="ital" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorItal" Width="72" Height="26" FontSize="11" Text="#5CFF5C" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="ital"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 6: Sub -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="6. 角标与改写 (紫色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorSub" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#B84DFF" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="sub" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorSub" Width="72" Height="26" FontSize="11" Text="#B84DFF" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="sub"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 7: Word -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="7. 学术语病措辞 (深青)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorWord" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#33B2B2" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="word" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorWord" Width="72" Height="26" FontSize="11" Text="#33B2B2" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="word"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Row 8: Keyword -->
+                                    <Grid Margin="0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="8. 快捷检索关键词 (黄色)" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border x:Name="rectColorKeyword" Width="26" Height="22" CornerRadius="3" BorderThickness="1" BorderBrush="#C8C6C4" Background="#FFFF33" Cursor="Hand" MouseLeftButtonDown="RectColor_Click" Tag="keyword" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="txtColorKeyword" Width="72" Height="26" FontSize="11" Text="#FFFF33" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" MaxLength="7" TextChanged="ColorTextBox_TextChanged" Tag="keyword"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                                <TextBlock Text="点击彩色色块可打开系统调色盘取色。保存后插件将自动计算变淡的同色系浅色以留痕复核。" Style="{StaticResource AdvancedHintText}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 1: Rule switches by module -->
+                        <Border Style="{StaticResource AdvancedCard}">
+                            <StackPanel>
+                                <Border Style="{StaticResource AdvancedSectionHeader}">
+                                    <TextBlock Text="各功能模块检测规则开关" Style="{StaticResource AdvancedSectionTitle}"/>
+                                </Border>
+                                <TextBlock Text="每个 Ribbon 功能下包含的具体检测规则都列在这里；无法归入单一功能模块的选项放在“全局设置”。关闭某条规则后，该规则不会再参与扫描、标注或一键修复。" Style="{StaticResource AdvancedBodyText}" Margin="0,0,0,10"/>
+                                <StackPanel x:Name="panelRuleToggles"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 2: Whitelists -->
+                        <Border Style="{StaticResource AdvancedCard}">
+                            <StackPanel>
+                                <Border Style="{StaticResource AdvancedSectionHeader}">
+                                    <TextBlock Text="学术术语白名单与排除词" Style="{StaticResource AdvancedSectionTitle}"/>
+                                </Border>
+                                <TextBlock Text="大小写一致性排除词 (半角逗号分隔)" FontSize="11" Foreground="#605E5C" Margin="0,0,0,5"/>
+                                <TextBox x:Name="txtWhitelistCasing" FontSize="11" Margin="0,0,0,12" Height="30" Padding="6,0" VerticalContentAlignment="Center"/>
+
+                                <TextBlock Text="缩写首次定义排除词 (半角逗号分隔)" FontSize="11" Foreground="#605E5C" Margin="0,0,0,5"/>
+                                <TextBox x:Name="txtWhitelistAcronyms" FontSize="11" Height="30" Padding="6,0" VerticalContentAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 3: Diagnostic Thresholds -->
+                        <Border Style="{StaticResource AdvancedCard}">
+                            <StackPanel>
+                                <Border Style="{StaticResource AdvancedSectionHeader}">
+                                    <TextBlock Text="诊断触发阈值与敏感度" Style="{StaticResource AdvancedSectionTitle}"/>
+                                </Border>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock Text="大小写多数派决策比例阈值" FontSize="11" Foreground="#605E5C"/>
+                                    <TextBlock x:Name="txtCasingRatioVal" Text="70%" FontSize="12" FontWeight="Bold" Foreground="#D87C00" HorizontalAlignment="Right"/>
+                                </Grid>
+                                <Slider x:Name="sldCasingRatio" Minimum="50" Maximum="95" Value="70" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="SldCasingRatio_ValueChanged" Margin="0,0,0,14"/>
+                                
+                                <TextBlock Text="缩写首次定义允许最大字符滞后数" FontSize="11" Foreground="#605E5C" Margin="0,0,0,5"/>
+                                <TextBox x:Name="txtAcronymLag" FontSize="11" Height="30" Padding="6,0" VerticalContentAlignment="Center" Text="1000"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 4: Export/Import -->
+                        <Border Style="{StaticResource AdvancedCard}">
+                            <StackPanel>
+                                <Border Style="{StaticResource AdvancedSectionHeader}">
+                                    <TextBlock Text="团队协作与配置导入导出" Style="{StaticResource AdvancedSectionTitle}"/>
+                                </Border>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="导出配置 (.json)" Padding="0,8" Margin="0,0,6,0" FontSize="11" Click="ExportSettings_Click" ToolTip="将当前检测阈值、颜色、白名单和安全选项导出为 JSON，便于团队共享。"/>
+                                    <Button Grid.Column="1" Content="导入配置 (.json)" Padding="0,8" Margin="6,0,0,0" FontSize="11" Click="ImportSettings_Click" ToolTip="从 JSON 文件导入团队规则，并立即刷新当前面板设置。"/>
+                                </Grid>
+                                <TextBlock Text="支持一键将当前所有诊断参数打包导出，让课题组或科研团队保持相同的审阅与排版标准。" Style="{StaticResource AdvancedHintText}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Button Content="保存并应用所有设置" Background="#D87C00" Foreground="#FFFFFF" BorderThickness="0" Padding="0,12" FontSize="13" FontWeight="SemiBold" Cursor="Hand" Click="SaveSettings_Click" Margin="0,2,0,0" ToolTip="保存当前高级设置。后续扫描、修复、留痕颜色和白名单过滤都会按新设置执行。">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+        
+        <!-- Toast pop-up -->
+        <Border x:Name="borderToast" Grid.Row="1" Background="#323130" CornerRadius="20" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24" Padding="16,8" Visibility="Collapsed" SnapsToDevicePixels="True" MaxWidth="260">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="txtToastIcon" Text="✔" Foreground="#107C41" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="txtToastMessage" Text="诊断完毕" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

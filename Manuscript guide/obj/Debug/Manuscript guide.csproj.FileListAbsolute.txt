@@ -1,0 +1,17 @@
+D:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.csproj.AssemblyReference.cache
+D:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide_MarkupCompile.cache
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\UI\TaskPaneWPFControl.baml
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\UI\TaskPaneWPFControl.g.cs
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.g.resources
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript_guide.Properties.Resources.resources
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.csproj.GenerateResource.cache
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.csproj.CoreCompileInputs.cache
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\bin\Debug\Manuscript guide.dll
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\bin\Debug\Manuscript guide.pdb
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\bin\Debug\Manuscript guide.dll.manifest
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\bin\Debug\Manuscript guide.vsto
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\bin\Debug\Microsoft.Office.Tools.Common.v4.0.Utilities.dll
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscri.F0FBD343.Up2Date
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.dll
+d:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript guide.pdb
+D:\Data Onedrive\OneDrive\桌面\Manuscript Guide\Manuscript guide\obj\Debug\Manuscript_guide.Ribbon1.resources
