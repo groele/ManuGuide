@@ -1,0 +1,2051 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manuscript Guide - Word VSTO 插件 7+1 专项隔离检测与人工复核交互设计图</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #107c41; /* Word Green */
+            --primary-hover: #0b592e;
+            --bg-color: #e1dfdd;
+            --surface-color: #ffffff;
+            --text-color: #323130;
+            --text-secondary: #605e5c;
+            --border-color: #edebe9;
+            
+            /* Highlight colors mapped to Word WdColorIndex / Custom Shading RGB */
+            --hl-punctuation: rgba(0, 255, 255, 0.35); /* Turquoise */
+            --hl-punctuation-border: #00cccc;
+            
+            --hl-capitalization: rgba(0, 102, 204, 0.2); /* Blue */
+            --hl-capitalization-border: #0066cc;
+            
+            --hl-dash-spacing: rgba(255, 51, 51, 0.2); /* Red */
+            --hl-dash-spacing-border: #ff3333;
+            
+            --hl-data-space: rgba(255, 0, 255, 0.25); /* Pink */
+            --hl-data-space-border: #cc00cc;
+            
+            --hl-italics: rgba(0, 255, 0, 0.25); /* Bright Green */
+            --hl-italics-border: #00cc00;
+
+            --hl-subscript: rgba(128, 0, 128, 0.2); /* Violet / Purple */
+            --hl-subscript-border: #800080;
+            
+            --hl-wording: rgba(0, 128, 128, 0.25); /* Teal */
+            --hl-wording-border: #008080;
+            
+            --hl-keyword: rgba(255, 255, 0, 0.35); /* Yellow */
+            --hl-keyword-border: #cccc00;
+
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Office Ribbon Bar */
+        .ribbon {
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+            z-index: 100;
+            user-select: none;
+        }
+
+        .ribbon-tabs {
+            display: flex;
+            background-color: #f3f2f1;
+            padding-left: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .ribbon-tab {
+            padding: 8px 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-top: 2px solid transparent;
+            margin-bottom: -1px;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .ribbon-tab:hover {
+            color: var(--text-color);
+            background-color: #eaeaea;
+        }
+
+        .ribbon-tab.active {
+            color: var(--primary-color);
+            background-color: var(--surface-color);
+            border-top: 2px solid var(--primary-color);
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        .ribbon-content {
+            display: flex;
+            padding: 6px 20px;
+            background-color: var(--surface-color);
+            height: 106px;
+            align-items: center;
+        }
+
+        .ribbon-group {
+            display: flex;
+            align-items: center;
+            border-right: 1px solid var(--border-color);
+            padding-right: 16px;
+            margin-right: 16px;
+            height: 100%;
+            position: relative;
+        }
+
+        .ribbon-group:last-child {
+            border-right: none;
+            padding-right: 0;
+            margin-right: 0;
+        }
+
+        .ribbon-group-title {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 9px;
+            color: #a19f9d;
+            white-space: nowrap;
+        }
+
+        .ribbon-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 6px;
+            border: 1px solid transparent;
+            background: transparent;
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+            min-width: 66px;
+            height: 82px;
+        }
+
+        .ribbon-button:hover {
+            background-color: #f3f2f1;
+            border-color: #dedede;
+        }
+
+        .ribbon-button.active {
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .ribbon-button svg {
+            width: 22px;
+            height: 22px;
+            margin-bottom: 6px;
+            transition: var(--transition);
+        }
+
+        .ribbon-button span {
+            font-size: 11px;
+            font-weight: 500;
+            text-align: center;
+            color: var(--text-color);
+            line-height: 1.2;
+        }
+
+        /* Color accent for Ribbon Buttons to signify Specialized Audit areas */
+        .btn-punc svg { fill: #008a8a; }
+        .btn-cap svg { fill: #005ce6; }
+        .btn-dash svg { fill: #cc0000; }
+        .btn-data svg { fill: #cc00cc; }
+        .btn-italics svg { fill: #008000; }
+        .btn-subscript svg { fill: #800080; }
+        .btn-wording svg { fill: #006666; }
+        
+        .btn-punc.active { background-color: rgba(0, 255, 255, 0.15); border-color: rgba(0, 204, 204, 0.4); }
+        .btn-cap.active { background-color: rgba(0, 102, 204, 0.1); border-color: rgba(0, 102, 204, 0.3); }
+        .btn-dash.active { background-color: rgba(255, 51, 51, 0.1); border-color: rgba(255, 51, 51, 0.3); }
+        .btn-data.active { background-color: rgba(255, 0, 255, 0.08); border-color: rgba(204, 0, 204, 0.3); }
+        .btn-italics.active { background-color: rgba(0, 255, 0, 0.08); border-color: rgba(0, 204, 0, 0.3); }
+        .btn-subscript.active { background-color: rgba(128, 0, 128, 0.1); border-color: rgba(128, 0, 128, 0.3); }
+        .btn-wording.active { background-color: rgba(0, 128, 128, 0.08); border-color: rgba(0, 128, 128, 0.3); }
+
+        .ribbon-button-small-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .ribbon-button-small {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border: 1px solid transparent;
+            background: transparent;
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            transition: var(--transition);
+            width: 130px;
+            text-align: left;
+        }
+
+        .ribbon-button-small:hover {
+            background-color: #f3f2f1;
+        }
+
+        .ribbon-button-small svg {
+            width: 16px;
+            height: 16px;
+            fill: var(--primary-color);
+            flex-shrink: 0;
+        }
+
+        /* Workspace Layout */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Mock Word Document Area */
+        .document-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            padding: 24px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .word-page {
+            width: 812px;
+            min-height: 1148px;
+            background-color: var(--surface-color);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            padding: 72px 90px;
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .doc-header {
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+            margin-bottom: 40px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .doc-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #000;
+            margin-bottom: 24px;
+            line-height: 1.4;
+            text-align: center;
+        }
+
+        .doc-paragraph {
+            font-size: 14px;
+            line-height: 1.8;
+            color: #000;
+            margin-bottom: 16px;
+            text-align: justify;
+            word-break: break-word;
+        }
+
+        /* Hoverable Highlight Marks */
+        .mark-item {
+            position: relative;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: var(--transition);
+            padding: 1px 0;
+            border-bottom: 1.5px dashed transparent;
+            background-color: transparent;
+            border-bottom-color: transparent;
+        }
+
+        .mark-item:hover {
+            filter: brightness(0.92);
+        }
+
+        .mark-item.selected {
+            outline: 2px solid #0078d4;
+            outline-offset: 1px;
+            box-shadow: 0 0 8px rgba(0, 120, 212, 0.4);
+        }
+
+        /* Color classes, active state controls visibility of specific category */
+        .show-punc .mark-punctuation {
+            background-color: var(--hl-punctuation);
+            border-bottom-color: var(--hl-punctuation-border);
+        }
+        .show-cap .mark-capitalization {
+            background-color: var(--hl-capitalization);
+            border-bottom-color: var(--hl-capitalization-border);
+        }
+        .show-dash .mark-dash-spacing {
+            background-color: var(--hl-dash-spacing);
+            border-bottom-color: var(--hl-dash-spacing-border);
+        }
+        .show-data .mark-data-space {
+            background-color: var(--hl-data-space);
+            border-bottom-color: var(--hl-data-space-border);
+        }
+        .show-italics .mark-italics {
+            background-color: var(--hl-italics);
+            border-bottom-color: var(--hl-italics-border);
+        }
+        .show-subscript .mark-subscript {
+            background-color: var(--hl-subscript);
+            border-bottom-color: var(--hl-subscript-border);
+        }
+        .show-wording .mark-wording {
+            background-color: var(--hl-wording);
+            border-bottom-color: var(--hl-wording-border);
+        }
+        .show-keyword .mark-keyword {
+            background-color: var(--hl-keyword);
+            border-bottom-color: var(--hl-keyword-border);
+        }
+
+        /* Faded Corrected States for Manual Review - Keep Faint Pastel Background and Dotted Border */
+        .mark-item.corrected {
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .show-punc .mark-punctuation.corrected {
+            background-color: rgba(0, 255, 255, 0.08) !important;
+            border-bottom: 1.5px dotted rgba(0, 204, 204, 0.5) !important;
+        }
+        .show-cap .mark-capitalization.corrected {
+            background-color: rgba(0, 102, 204, 0.04) !important;
+            border-bottom: 1.5px dotted rgba(0, 102, 204, 0.3) !important;
+        }
+        .show-dash .mark-dash-spacing.corrected {
+            background-color: rgba(255, 51, 51, 0.04) !important;
+            border-bottom: 1.5px dotted rgba(255, 51, 51, 0.3) !important;
+        }
+        .show-data .mark-data-space.corrected {
+            background-color: rgba(255, 0, 255, 0.05) !important;
+            border-bottom: 1.5px dotted rgba(204, 0, 204, 0.3) !important;
+        }
+        .show-italics .mark-italics.corrected {
+            background-color: rgba(0, 255, 0, 0.05) !important;
+            border-bottom: 1.5px dotted rgba(0, 204, 0, 0.3) !important;
+        }
+        .show-subscript .mark-subscript.corrected {
+            background-color: rgba(128, 0, 128, 0.04) !important;
+            border-bottom: 1.5px dotted rgba(128, 0, 128, 0.3) !important;
+        }
+        .show-wording .mark-wording.corrected {
+            background-color: rgba(0, 128, 128, 0.05) !important;
+            border-bottom: 1.5px dotted rgba(0, 128, 128, 0.3) !important;
+        }
+
+        /* Sidebar Task Pane */
+        .taskpane {
+            width: 390px;
+            background-color: #f3f2f1;
+            border-left: 1px solid var(--border-color);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            z-index: 90;
+            transition: var(--transition);
+        }
+
+        .taskpane-header {
+            background-color: var(--surface-color);
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: var(--transition);
+        }
+
+        /* Dynamic Header styles depending on the Active Specialized Module */
+        .taskpane-header.accent-punc { border-top: 4px solid var(--hl-punctuation-border); }
+        .taskpane-header.accent-cap { border-top: 4px solid var(--hl-capitalization-border); }
+        .taskpane-header.accent-dash { border-top: 4px solid var(--hl-dash-spacing-border); }
+        .taskpane-header.accent-data { border-top: 4px solid var(--hl-data-space-border); }
+        .taskpane-header.accent-italics { border-top: 4px solid var(--hl-italics-border); }
+        .taskpane-header.accent-subscript { border-top: 4px solid var(--hl-subscript-border); }
+        .taskpane-header.accent-wording { border-top: 4px solid var(--hl-wording-border); }
+        .taskpane-header.accent-keyword { border-top: 4px solid var(--hl-keyword-border); }
+
+        .taskpane-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .taskpane-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+        }
+
+        /* Specialized Panels Overview state */
+        .overview-panel {
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 16px;
+            flex: 1;
+            color: var(--text-secondary);
+        }
+
+        .overview-icon {
+            width: 64px;
+            height: 64px;
+            opacity: 0.6;
+        }
+
+        /* Dedicated module configuration box inside Task Pane */
+        .module-spec-box {
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .module-spec-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .module-quick-action {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+        }
+
+        /* Content List of issues */
+        .issue-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .issue-card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            box-shadow: var(--shadow-sm);
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            animation: slideDown 0.2s ease-out;
+        }
+
+        .issue-card:hover {
+            border-color: #a19f9d;
+            box-shadow: var(--shadow-md);
+        }
+
+        .issue-card.selected {
+            border-color: var(--primary-color);
+            background-color: #f9fbf9;
+            box-shadow: 0 4px 12px rgba(16, 124, 65, 0.08);
+        }
+
+        .issue-card.selected::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+        }
+
+        /* Highlight color strip dynamically changing per active module */
+        .show-punc .issue-card.selected::before { background-color: var(--hl-punctuation-border); }
+        .show-cap .issue-card.selected::before { background-color: var(--hl-capitalization-border); }
+        .show-dash .issue-card.selected::before { background-color: var(--hl-dash-spacing-border); }
+        .show-data .issue-card.selected::before { background-color: var(--hl-data-space-border); }
+        .show-italics .issue-card.selected::before { background-color: var(--hl-italics-border); }
+        .show-subscript .issue-card.selected::before { background-color: var(--hl-subscript-border); }
+        .show-wording .issue-card.selected::before { background-color: var(--hl-wording-border); }
+
+        /* Corrected card styling */
+        .issue-card.corrected {
+            background-color: #fcfdfc;
+            border-color: #d1ebd1;
+            opacity: 0.8;
+        }
+        
+        .issue-card.corrected:hover {
+            opacity: 1;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .issue-card.corrected::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background-color: #2ca02c !important;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .issue-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-punctuation { background-color: rgba(0, 255, 255, 0.15); color: #007a7a; border: 1px solid rgba(0, 255, 255, 0.3); }
+        .badge-capitalization { background-color: rgba(0, 102, 204, 0.1); color: #005ce6; border: 1px solid rgba(0, 102, 204, 0.2); }
+        .badge-dash-spacing { background-color: rgba(255, 51, 51, 0.1); color: #cc0000; border: 1px solid rgba(255, 51, 51, 0.2); }
+        .badge-data-space { background-color: rgba(255, 0, 255, 0.1); color: #990099; border: 1px solid rgba(255, 0, 255, 0.2); }
+        .badge-italics { background-color: rgba(0, 204, 0, 0.1); color: #007700; border: 1px solid rgba(0, 204, 0, 0.2); }
+        .badge-subscript { background-color: rgba(128, 0, 128, 0.1); color: #800080; border: 1px solid rgba(128, 0, 128, 0.2); }
+        .badge-wording { background-color: rgba(0, 128, 128, 0.1); color: #006666; border: 1px solid rgba(0, 128, 128, 0.2); }
+        .badge-corrected { background-color: rgba(44, 160, 44, 0.12); color: #257e25; border: 1px solid rgba(44, 160, 44, 0.3); }
+
+        .issue-meta {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .issue-desc {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .issue-context {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background-color: #faf9f8;
+            padding: 6px 8px;
+            border-radius: var(--radius-sm);
+            border-left: 2px solid #dedede;
+            font-family: monospace;
+        }
+
+        .issue-context em {
+            background-color: rgba(255, 235, 204, 0.8);
+            font-style: normal;
+            font-weight: bold;
+            color: #d83b01;
+            padding: 0 2px;
+        }
+
+        /* Action Panel inside Card (active when selected) */
+        .card-actions {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 10px;
+            margin-top: 4px;
+        }
+
+        .issue-card.selected .card-actions {
+            display: flex;
+        }
+
+        .fix-container {
+            font-size: 12px;
+            background-color: #f3f2f1;
+            padding: 8px;
+            border-radius: var(--radius-sm);
+            border: 1px dashed #b3b0ad;
+        }
+
+        .fix-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .fix-value {
+            font-weight: bold;
+            color: var(--primary-color);
+            font-family: monospace;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+            text-align: center;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: #fff;
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: #fff;
+            color: var(--text-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: #f3f2f1;
+            border-color: #a19f9d;
+        }
+        
+        .btn-undo {
+            background-color: #fff;
+            color: #d83b01;
+            border-color: #fde7e9;
+        }
+        
+        .btn-undo:hover {
+            background-color: #fde7e9;
+            border-color: #e81123;
+        }
+
+        /* Footer Status Bar in Task Pane */
+        .taskpane-footer {
+            background-color: var(--surface-color);
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar-container {
+            width: 120px;
+            height: 6px;
+            background-color: #edebe9;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Keyword Tab Content */
+        .keyword-panel {
+            display: none;
+            padding: 16px;
+            flex-direction: column;
+            gap: 16px;
+            height: 100%;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .input-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .input-text {
+            padding: 8px 12px;
+            border: 1px solid #a19f9d;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .input-text:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(16, 124, 65, 0.2);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .color-selector {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .color-option {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: var(--transition);
+        }
+
+        .color-option.selected {
+            border-color: #000;
+            box-shadow: 0 0 4px rgba(0,0,0,0.3);
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background-color: #323130;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Animations */
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="">
+
+    <!-- Microsoft Word Ribbon Mockup -->
+    <div class="ribbon">
+        <div class="ribbon-tabs">
+            <div class="ribbon-tab">开始</div>
+            <div class="ribbon-tab">插入</div>
+            <div class="ribbon-tab">布局</div>
+            <div class="ribbon-tab">引用</div>
+            <div class="ribbon-tab">审阅</div>
+            <div class="ribbon-tab">视图</div>
+            <div class="ribbon-tab active">论文专项规范 (Manuscript Guide)</div>
+        </div>
+        <div class="ribbon-content">
+            <!-- Group 1: Specialized Diagnostic Audits (7 Isolated Modules) -->
+            <div class="ribbon-group">
+                <button class="ribbon-button btn-punc" id="btn-ribbon-punc">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm0-4h-2V7h2v7z"/>
+                    </svg>
+                    <span>标点与格式</span>
+                </button>
+                <button class="ribbon-button btn-cap" id="btn-ribbon-cap">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12.75 3h-1.5L6.5 14h2.1l1.1-3h4.6l1.1 3h2.1L12.75 3zm-2.55 6L12 4.13 13.8 9h-3.6zM3 18h18v2H3v-2z"/>
+                    </svg>
+                    <span>大小写规范</span>
+                </button>
+                <button class="ribbon-button btn-dash" id="btn-ribbon-dash">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19 13H5v-2h14v2zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                    </svg>
+                    <span>横线与混排</span>
+                </button>
+                <button class="ribbon-button btn-data" id="btn-ribbon-data">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M19.36 10.04L20.8 8.6c.39-.39.39-1.02 0-1.41L16.8 3.2c-.39-.39-1.02-.39-1.41 0l-1.44 1.44c-.78-.78-2.05-.78-2.83 0L3.2 12.56c-.78.78-.78 2.05 0 2.83l3.96 3.96c.78.78 2.05.78 2.83 0l7.92-7.92c.78-.78.78-2.05 0-2.83l1.45-1.56zM8.32 18.04l-3.96-3.96 7.92-7.92 3.96 3.96-7.92 7.92z"/>
+                    </svg>
+                    <span>数据与数值</span>
+                </button>
+                <button class="ribbon-button btn-italics" id="btn-ribbon-ital">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4z"/>
+                    </svg>
+                    <span>变量与斜体</span>
+                </button>
+                <button class="ribbon-button btn-subscript" id="btn-ribbon-sub">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M16 6h-2v3h-3v2h3v3h2v-3h3V9h-3V6zm-8 4c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-4C5.79 6 4 7.79 4 10s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/>
+                    </svg>
+                    <span>角标与改写</span>
+                </button>
+                <button class="ribbon-button btn-wording" id="btn-ribbon-word">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                    <span>语病与措辞</span>
+                </button>
+                <div class="ribbon-group-title">专项规范检测 (单击直接激活专项模块)</div>
+            </div>
+
+            <!-- Group 2: Keywords -->
+            <div class="ribbon-group">
+                <button class="ribbon-button" id="btn-ribbon-keyword" style="min-width: 64px;">
+                    <svg viewBox="0 0 24 24" style="fill: #d87c00;">
+                        <!-- Document sheet base (semi-transparent) -->
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H14v-2H6V4h7v5h5v2h2V8l-6-6z" fill="#d87c00" opacity="0.35"/>
+                        <!-- Document lines -->
+                        <path d="M8 12h4v2H8v-2zm0-4h6v2H8V8z" fill="#d87c00" opacity="0.35"/>
+                        <!-- Magnifying glass overlay (solid vibrant academic gold/orange) -->
+                        <path d="M18.5 17h-.79l-.28-.27c1-.98 1.57-2.35 1.57-3.73 0-3.04-2.46-5.5-5.5-5.5S8 9.96 8 13s2.46 5.5 5.5 5.5c1.38 0 2.75-.57 3.73-1.57l.27.28v.79l4.25 4.25 1.25-1.25-4.25-4.25zm-5 0c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" fill="#d87c00" />
+                    </svg>
+                    <span>关键词标记</span>
+                </button>
+                <div class="ribbon-group-title">快捷检索</div>
+            </div>
+
+            <!-- Group 3: Tools & Setup -->
+            <div class="ribbon-group">
+                <button class="ribbon-button" id="btn-ribbon-clear" style="min-width: 64px;">
+                    <svg viewBox="0 0 24 24" style="fill: #e03b2b;">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                    <span>清除标记</span>
+                </button>
+                <button class="ribbon-button" id="btn-open-rules" style="min-width: 64px;">
+                    <svg viewBox="0 0 24 24" style="fill: var(--primary-color);">
+                        <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12c0,0.31,0.04,0.62,0.08,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+                    </svg>
+                    <span>高级设置</span>
+                </button>
+                <div class="ribbon-group-title">一键与配置</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="workspace" id="doc-view-mode">
+        <!-- Mock Word Document Container -->
+        <div class="document-container">
+            <div class="word-page">
+                <div class="doc-header">
+                    <span>科技论文手稿 - 专项隔离标记检查模式</span>
+                    <span>Page 1 of 1</span>
+                </div>
+
+                <div class="doc-title">Optical and Electronic Transport Properties of Monolayer Semiconductors under Strain and Gate Doping</div>
+                
+                <div class="doc-paragraph">
+                    Transition metal dichalcogenides possess rich excitonic physics. In this study, we fabricated high-quality devices encapsulated by hexagonal boron nitride. <span class="mark-item mark-punctuation" id="mark-punc-1" data-id="punc-1">For instance,we found that et al。 reported similar results.</span> Specifically, we investigated the excitation behavior at cryogenic temperature.
+                </div>
+
+                <div class="doc-paragraph">
+                    The optoelectronic response was systematically analyzed. <span class="mark-item mark-capitalization" id="mark-cap-1" data-id="cap-1">mw power was adjusted from 1 mW to 10 MW.</span> When adjusting the carrier density, the optical properties undergo dramatic modifications. <span class="mark-item mark-data-space" id="mark-data-1" data-id="data-1">The range was from 10–300K, and density was 5.2x10^12 cm-2.</span> The backgate voltage was scanned to control doping.
+                </div>
+
+                <div class="doc-paragraph">
+                    Under electrostatic gating, <span class="mark-item mark-dash-spacing" id="mark-dash-1" data-id="dash-1">we observed exciton-polariton coupling at room temperature.</span> This spectral weight shift directly reflects the exciton–trion redistribution. <span class="mark-item mark-subscript" id="mark-sub-1" data-id="sub-1">The solution containing H₂O and dissolved SiO₂ was analyzed.</span> 
+                    In addition, <span class="mark-item mark-subscript" id="mark-sub-2" data-id="sub-2">the thickness of Al2O3 layer determines the gate capacitance.</span>
+                </div>
+
+                <div class="doc-paragraph">
+                    The critical energy spacing is determined by gate voltages. <span class="mark-item mark-subscript" id="mark-sub-3" data-id="sub-3">The density is measured in units of cm⁻³ or m⁻², and the energy is determined by Eg.</span> For comparison, <span class="mark-item mark-italics" id="mark-ital-1" data-id="ital-1">the intensity I varies with temperature as sin(x).</span> The emission peaks are fitted by standard Lorentzian profiles, yielding the peak energy, full width at half maximum (FWHM), and integrated intensities. <span class="mark-item mark-italics" id="mark-ital-2" data-id="ital-2">This was measured in situ.</span>
+                </div>
+
+                <div class="doc-paragraph">
+                    Further experimental analysis was conducted. <span class="mark-item mark-wording" id="mark-word-1" data-id="word-1">The data is consistent, and with the increase of temperature, the peak disappears.</span> This behavior is well explained by the thermal dissociation model.
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Task Pane (Sidebar) -->
+        <div class="taskpane" id="sidebar-pane">
+            <div class="taskpane-header" id="pane-header">
+                <div class="taskpane-title" id="pane-title-text">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--primary-color)">
+                        <path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm1,15H11V15h2Zm0-4H11V7h2Z"/>
+                    </svg>
+                    <span>排版助手 - 专项检查通道</span>
+                </div>
+                <button class="taskpane-close" onclick="alert('任务面板已收起。')">✕</button>
+            </div>
+
+            <!-- Panel State 1: Overview -->
+            <div class="overview-panel" id="panel-overview">
+                <svg class="overview-icon" viewBox="0 0 24 24" fill="#a19f9d">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-6h2v6zm0-8h-2V7h2v4z"/>
+                </svg>
+                <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">未激活专项诊断模块</div>
+                <div style="font-size: 12px; line-height: 1.6; margin-top: 8px;">
+                    请单击顶栏 Ribbon 功能区中的<br>
+                    <strong style="color: var(--primary-color);">标点与格式、大小写规范、横线与混排、数据与数值、变量与斜体、角标与改写、语病与措辞</strong><br>
+                    按钮，启动对应的学术论文专项排版审查。
+                </div>
+            </div>
+
+            <!-- Panel State 2: Dynamic Specialized Scan Panel -->
+            <div class="hidden" id="panel-active-scan" style="flex-direction: column; flex: 1; overflow: hidden;">
+                <!-- Specialized Module Configuration Panel -->
+                <div class="module-spec-box">
+                    <div class="module-spec-title">
+                        <span>当前模块配置</span>
+                        <span id="module-sub-desc" style="font-size: 10px; font-weight: normal; color: var(--primary-color);"></span>
+                    </div>
+                    
+                    <!-- Punctuation Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-punc">
+                        <label class="checkbox-label"><input type="checkbox" checked> 英文段落中文标点误用检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 标点符号（逗号/分号）后空格缺失补齐</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 清理零宽空格与全角空格</label>
+                    </div>
+
+                    <!-- Capitalization Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-cap">
+                        <label class="checkbox-label"><input type="checkbox" checked> 物理单位（mW/MW/eV等）大小写校验</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 化学元素名称首字母大写检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 句首首字母大写与缩写检查</label>
+                    </div>
+
+                    <!-- Dash Spacing Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-dash">
+                        <label class="checkbox-label"><input type="checkbox" checked> 连接符（En-dash vs Hyphen）关联性词组校对</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 中英文与阿拉伯数字之间半角空格混排</label>
+                    </div>
+
+                    <!-- Data Space Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-data">
+                        <label class="checkbox-label"><input type="checkbox" checked> 数值与物理单位（K/nm/V等）间隔空格</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 范围表示（from A to B 规范）</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 科学计数法与乘号（×）标准化</label>
+                    </div>
+
+                    <!-- Italics Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-ital">
+                        <label class="checkbox-label"><input type="checkbox" checked> 物理量单字母变量斜体检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 数学函数与微分符号（sin/d）正体校正</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 拉丁文缩写（et al./in situ）正体检验</label>
+                    </div>
+
+                    <!-- Subscript Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-sub">
+                        <div style="font-size: 11px; color: var(--text-secondary); background: #f9fbf9; padding: 8px 10px; border-radius: var(--radius-sm); border-left: 3px solid var(--primary-color); margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px;">
+                            <div>角标改写格式偏好：<strong style="color: var(--primary-color);" id="txt-current-sub-preference">Word 原生格式 (推荐)</strong></div>
+                            <div><a href="#" id="link-goto-settings" style="color: #0078d4; text-decoration: underline; font-weight: 500;">👉 前往系统高级设置更改偏好</a></div>
+                        </div>
+                        <label class="checkbox-label"><input type="checkbox" checked> Unicode 上标/下标字符替换并物理下沉</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 通用化学式（H2O/SiO2等）数字下标化</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 学术描述性角标（如Eg, Fermi能级EF）正体规整</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> LaTeX 样式（E_g / x^2）行内上下标自动改写</label>
+                    </div>
+
+                    <!-- Wording Configs -->
+                    <div class="checkbox-group module-config-fields hidden" id="cfg-word">
+                        <label class="checkbox-label"><input type="checkbox" checked> 学术名词 data 复数动词一致性校验</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 冗余啰嗦句式（As is shown / In order to）简化</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 中式英语（With the increase of）伴随句式优化</label>
+                    </div>
+
+                    <!-- Quick Module Actions -->
+                    <div class="module-quick-action">
+                        <span style="font-size: 11px; color: var(--text-secondary);">本模块未解决: <span id="module-err-count" class="text-bold" style="color: red;">0</span> 处</span>
+                        <button class="btn btn-primary" id="btn-fix-all-module" style="padding: 4px 10px; font-size: 11px; flex: initial; width: auto;">一键修复本模块</button>
+                    </div>
+                </div>
+
+                <!-- Issue List Scrollable (Fills dynamically) -->
+                <div class="issue-list" id="list-container">
+                    <!-- Cards will be dynamically shown based on selection -->
+                </div>
+
+                <!-- Footer Audit Statistics -->
+                <div class="taskpane-footer">
+                    <span id="footer-status-text">专项诊断</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel State 3: Keyword Search Panel -->
+            <div class="keyword-panel" id="panel-keyword">
+                <div class="input-group">
+                    <label class="input-label" for="kw-input">输入查找关键词（逗号/分号分隔）</label>
+                    <input type="text" class="input-text" id="kw-input" placeholder="e.g. exciton, temperature, doping">
+                </div>
+
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-case"> 区分大小写
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-word"> 全字匹配
+                    </label>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">选择高亮颜色标记 (Highlight)</label>
+                    <div class="color-selector">
+                        <div class="color-option selected" style="background-color: #ffff00;" data-color="wdYellow" title="黄色"></div>
+                        <div class="color-option" style="background-color: #00ff00;" data-color="wdBrightGreen" title="亮绿"></div>
+                        <div class="color-option" style="background-color: #00ffff;" data-color="wdTurquoise" title="青色"></div>
+                        <div class="color-option" style="background-color: #ff00ff;" data-color="wdPink" title="粉色"></div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="btn-start-search" style="padding: 10px; font-size: 12px; font-weight: bold; margin-top: 10px;">开始专项查找与标记</button>
+                
+                <div class="input-group" id="search-results-box" style="display: none; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 8px;">
+                    <div class="module-spec-title" style="margin-bottom: 8px;">查找统计结果</div>
+                    <div style="font-size: 12px; max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;" id="search-stats-list">
+                        <!-- Fill dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel State 4: Rules Whitelist Config -->
+            <div class="keyword-panel scrollable-panel" id="panel-rules" style="display: none; flex-direction: column; overflow-y: auto; gap: 16px; height: calc(100vh - 180px); padding-bottom: 24px;">
+                <div class="module-spec-title" style="margin-bottom: 4px; font-size: 13px; font-weight: 700; color: var(--primary-color);">系统个性化与高级规则配置</div>
+                
+                <!-- Section 0: Subscript Format Preference -->
+                <div id="sec-sub-settings" style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; transition: var(--transition);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">🔬 角标与公式排版偏好</div>
+                    <label class="checkbox-label" style="color: var(--primary-color); font-weight: 600; line-height: 1.4;">
+                        <input type="checkbox" id="chk-use-native-format" checked> 优先使用 Word 原生格式设置 (推荐)
+                    </label>
+                    <div style="font-size: 10px; color: var(--text-secondary); line-height: 1.4; padding-left: 20px;">
+                        勾选后将保留标准的 ASCII 字符（如 <code>Al2O3</code>、<code>cm-3</code>），并在 Word 中应用原生的下标或上标格式属性。这能保持论文全局文本可搜索（Ctrl+F）、可复制，且不破坏 Word 原生的拼写检查。如果不勾选，则直接改写为物理 Unicode 上下角标字符（如 <code>Al₂O₃</code>、<code>cm⁻³</code>）。
+                    </div>
+                </div>
+                
+                <!-- Section 1: Custom Diagnostic Colors -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">🎨 诊断高亮色彩自定义</div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 8px;" id="custom-color-list">
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>1. 标点与格式 (青色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-punc" value="#00E5E5" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-punc" value="#00E5E5" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>2. 大大小写规范 (蓝色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-cap" value="#3399FF" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-cap" value="#3399FF" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>3. 横线与混排 (红色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-dash" value="#FF5C5C" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-dash" value="#FF5C5C" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>4. 数据与数值 (粉色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-data" value="#FF66FF" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-data" value="#FF66FF" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>5. 变量与斜体 (绿色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-ital" value="#5CFF5C" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-ital" value="#5CFF5C" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>6. 角标与改写 (紫色)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-sub" value="#B84DFF" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-sub" value="#B84DFF" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>7. 学术语病措辞 (深青)</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="color" id="col-word" value="#33B2B2" style="border:none; width: 24px; height: 20px; cursor: pointer; background:none; padding:0;">
+                                <input type="text" id="hex-word" value="#33B2B2" maxlength="7" style="width: 60px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; font-size: 11px; text-align: center;">
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">💡 修改颜色码或取色器将**动态更新文档诊断底纹**！保存后插件将自动计算变淡的同色系浅色以留痕复核。</div>
+                </div>
+
+                <!-- Section 2: Whitelists & Ignored Terms -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">✍️ 学术术语白名单与排除词</div>
+                    
+                    <div class="input-group">
+                        <label class="input-label" style="font-size: 11px;">大小写一致性排除词 ( GaAs, SrTiO3, LaTeX, iPhone )</label>
+                        <input type="text" class="input-text" id="cfg-whitelist-casing" value="GaAs, SrTiO3, LaTeX, iPhone, macOS, raman" style="padding: 4px 8px; font-size: 11px;">
+                    </div>
+                    <div class="input-group" style="margin-top: 4px;">
+                        <label class="input-label" style="font-size: 11px;">缩写首次定义排除词 ( DNA, RNA, CPU, DFT )</label>
+                        <input type="text" class="input-text" id="cfg-whitelist-acronyms" value="DNA, RNA, MOSFET, STEM, TEM, AFM" style="padding: 4px 8px; font-size: 11px;">
+                    </div>
+                </div>
+
+                <!-- Section 3: Detection Thresholds -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">⚙️ 诊断触发阈值与敏感度</div>
+                    
+                    <div class="input-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                            <label class="input-label" style="font-size: 11px; margin-bottom: 0;">大小写多数派决策比例阈值</label>
+                            <span id="lbl-casing-ratio" style="font-size: 11px; font-weight: bold; color: var(--primary-color);">70%</span>
+                        </div>
+                        <input type="range" id="cfg-threshold-casing-ratio" min="50" max="95" value="70" style="width: 100%; cursor: pointer;">
+                        <div style="font-size: 9px; color: var(--text-secondary); margin-top: 2px; line-height: 1.3;">当一种拼写变体出现比例超过 70% 时才触发将少数派更正。</div>
+                    </div>
+                    
+                    <div class="input-group" style="margin-top: 6px;">
+                        <label class="input-label" style="font-size: 11px;">缩写首次定义允许最大字符滞后数 (字符)</label>
+                        <input type="number" id="cfg-threshold-lag" class="input-text" value="1000" min="100" max="5000" step="100" style="padding: 4px 8px; font-size: 11px;">
+                    </div>
+                </div>
+
+                <!-- Section 4: Academic Safety & Advanced Typography Tuning -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">🛡️ 学术规范与安全防错微调</div>
+                    <div class="checkbox-group" style="gap: 8px;">
+                        <label class="checkbox-label" title="微米 μm 符号在不同字体下可能有 Greek Mu (U+03BC) 或 Micro Sign (U+00B5) 两种编码，直接影响出版社排版系统。">
+                            <input type="checkbox" id="chk-greek-unify" checked> 希腊字母/微符号编码自动规范化 (U+03BC)
+                        </label>
+                        <label class="checkbox-label" title="开启后，点击‘清除标记’按钮只清除插件诊断产生的底纹，保留您自己手动标记的高亮颜色。">
+                            <input type="checkbox" id="chk-preserve-user-hl" checked> 清除标记时保留用户手动荧光笔高亮
+                        </label>
+                        <label class="checkbox-label" title="检查行内 Microsoft 公式域末尾是否遗漏句号或逗号，以及公式与前后文的英文半角空格是否完整。">
+                            <input type="checkbox" id="chk-equation-punc" checked> 行内公式域末尾标点与空格排版审查
+                        </label>
+                        <label class="checkbox-label" title="强制检查 Figure 1, Table 2, Fig. 3 等图表引用的首字母大写，并自动适配缩写。">
+                            <input type="checkbox" id="chk-cross-ref-cap" checked> 强制图表/文献交叉引用首字母大写
+                        </label>
+                        <label class="checkbox-label" title="在高能的一键批量修复运行前，静默保存一份备份文档，防止大面积替换破坏 Word 历史撤销记录。">
+                            <input type="checkbox" id="chk-auto-backup" checked> 批量一键修复前自动在同目录备份文档
+                        </label>
+                        <label class="checkbox-label" title="将 F, f, E, e 等常用物理量字母加入大小写敏感锁，防止被全局大小写一致性引擎强行统一。">
+                            <input type="checkbox" id="chk-variable-lock" checked> 启用物理与数学公式变量大小写保护
+                        </label>
+                    </div>
+                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">💡 这些低频但关键的微调项专为 Nature/Science 等高水平期刊投稿排版设计，避免排版细节被审稿人诟病。</div>
+                </div>
+
+                <!-- Section 5: Export/Import Configuration -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">👥 团队协作与配置导入导出</div>
+                    
+                    <div class="btn-group" style="gap: 6px;">
+                        <button class="btn btn-secondary" id="btn-export-settings" style="padding: 6px 10px; font-size: 11px; flex: 1;">导出配置 (.json)</button>
+                        <button class="btn btn-secondary" id="btn-import-settings" style="padding: 6px 10px; font-size: 11px; flex: 1;">导入配置 (.json)</button>
+                    </div>
+                    <div style="font-size: 9px; color: var(--text-secondary); line-height: 1.3;">支持一键将当前所有的诊断颜色、词汇白名单以及灵敏度参数打包导出，让整个课题组或科研团队保持一致 of 审阅与排版标准！</div>
+                </div>
+
+                <!-- Section 6: Standard Whitelists -->
+                <div style="background: #fff; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 4px;">🔍 模块开启与引擎配置</div>
+                    <div class="checkbox-group">
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用标点与格式检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用大小写与缩写检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用横线与空格混排检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用数据与单位数值检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用公式变量与学术斜体检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用角标与改写检测</label>
+                        <label class="checkbox-label"><input type="checkbox" checked> 启用学术语病与措辞检测</label>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Toast Component -->
+    <div class="toast" id="toast">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="#107c41">
+            <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+        </svg>
+        <span id="toast-text">诊断完毕</span>
+    </div>
+
+    <!-- Mock database of issues, categorized -->
+    <script>
+        const issueDB = {
+            'punc': [
+                {
+                    id: 'punc-1',
+                    badge: '标点格式规范',
+                    badgeClass: 'badge-punctuation',
+                    meta: '正文 • 第 1 页',
+                    desc: '半角标点后缺失英文空格，且误用了中文全角句号（。）。',
+                    context: '...For instance,<em>we</em> found that et al<em>。</em> reported...',
+                    suggest: 'For instance, we found that et al. ',
+                    originalText: 'For instance,we found that et al。 reported similar results.',
+                    cleanText: 'For instance, we found that et al. reported similar results.',
+                    targetMark: 'mark-punc-1'
+                }
+            ],
+            'cap': [
+                {
+                    id: 'cap-1',
+                    badge: '大小写规范',
+                    badgeClass: 'badge-capitalization',
+                    meta: '正文 • 第 1 页',
+                    desc: '句首的缩写单位“mw”未大写且应添加冠词“The”，并且兆瓦“MW”应根据上下文匹配。',
+                    context: '...encapsulated by hexagonal boron nitride. <em>mw</em> power was...',
+                    suggest: 'The mW power',
+                    originalText: 'mw power was adjusted from 1 mW to 10 MW.',
+                    cleanText: 'The mW power was adjusted from 1 mW to 10 MW.',
+                    targetMark: 'mark-cap-1'
+                }
+            ],
+            'dash': [
+                {
+                    id: 'dash-1',
+                    badge: '横线混排规范',
+                    badgeClass: 'badge-dash-spacing',
+                    meta: '正文 • 第 1 页',
+                    desc: '表示关联/并列关系的复合词组，中间的短横线建议使用标准 En-dash（–）而非 Hyphen（-）。',
+                    context: '...observed <em>exciton-polariton</em> coupling at room...',
+                    suggest: 'exciton–polariton (En-dash 关联号)',
+                    originalText: 'we observed exciton-polariton coupling at room temperature.',
+                    cleanText: 'we observed exciton–polariton coupling at room temperature.',
+                    targetMark: 'mark-dash-1'
+                }
+            ],
+            'data': [
+                {
+                    id: 'data-1',
+                    badge: '数据数值规范',
+                    badgeClass: 'badge-data-space',
+                    meta: '正文 • 第 1 页',
+                    desc: '英文范围表达误用波浪线表示，数值与单位（K）紧粘，科学计数法误用 x 代替标准乘号（×）。',
+                    context: '...was <em>from 10–300K</em>, and density was <em>5.2x10^12</em>...',
+                    suggest: 'from 10 to 300 K 并改写为 5.2 × 10¹²',
+                    originalText: 'The range was from 10–300K, and density was 5.2x10^12 cm-2.',
+                    cleanText: 'The range was from 10 to 300 K, and density was 5.2 × 10¹² cm-2.',
+                    targetMark: 'mark-data-1'
+                }
+            ],
+            'ital': [
+                {
+                    id: 'ital-1',
+                    badge: '变量斜体规范',
+                    badgeClass: 'badge-italics',
+                    meta: '正文 • 第 1 页',
+                    desc: '作为物理量的单字母变量 I 和自变量 x 应设为斜体，而标准数学函数 sin 应该设为正体。',
+                    context: '...the intensity <em>I</em> varies with temperature as <em>sin(x)</em>.',
+                    suggest: 'intensity $I$ ... as $\\sin(x)$ (变量斜体，函数正体)',
+                    originalText: 'the intensity I varies with temperature as sin(x).',
+                    cleanText: 'the intensity I varies with temperature as sin(x).',
+                    targetMark: 'mark-ital-1'
+                },
+                {
+                    id: 'ital-2',
+                    badge: '拉丁词规范',
+                    badgeClass: 'badge-italics',
+                    meta: '正文 • 第 1 页',
+                    desc: '现代学术写作中拉丁文短语 in situ 推荐使用规范的常规正体（Upright）。',
+                    context: '...This was measured <em>in situ</em>.',
+                    suggest: 'in situ (重置为常规正体)',
+                    originalText: 'This was measured in situ.',
+                    cleanText: 'This was measured in situ.',
+                    targetMark: 'mark-ital-2'
+                }
+            ],
+            'sub': [
+                {
+                    id: 'sub-1',
+                    badge: '化学式角标',
+                    badgeClass: 'badge-subscript',
+                    meta: '正文 • 第 1 页',
+                    desc: '通用化学式（H₂O / SiO₂）中错误地使用了 Unicode 下标字符“₂”，应替换为标准 ASCII 数字并设置 Word 原生下标格式。',
+                    context: '...containing <em>H₂O</em> and dissolved <em>SiO₂</em> was...',
+                    suggest: 'H₂O and SiO₂ (使用原生下标格式)',
+                    originalText: 'The solution containing H₂O and dissolved SiO₂ was analyzed.',
+                    cleanText: 'The solution containing H₂O and dissolved SiO₂ was analyzed.',
+                    targetMark: 'mark-sub-1'
+                },
+                {
+                    id: 'sub-2',
+                    badge: '化学式下标',
+                    badgeClass: 'badge-subscript',
+                    meta: '正文 • 第 1 页',
+                    desc: '化学式 Al2O3 中的数字 2 和 3 未进行下标格式化，建议执行自动下沉。',
+                    context: '...thickness of <em>Al2O3</em> layer determines...',
+                    suggest: 'Al₂O₃ (数字自动下标化)',
+                    originalText: 'the thickness of Al2O3 layer determines the gate capacitance.',
+                    cleanText: 'the thickness of Al₂O₃ layer determines the gate capacitance.',
+                    targetMark: 'mark-sub-2'
+                },
+                {
+                    id: 'sub-3',
+                    badge: '学术描述角标',
+                    badgeClass: 'badge-subscript',
+                    meta: '正文 • 第 1 页',
+                    desc: '单位负指数“cm⁻³”和“m⁻²”误用 Unicode 字符；描述性角标 Eg（g为描述gap）的下标部分未进行正体化规整。',
+                    context: '...units of <em>cm⁻³</em> or <em>m⁻²</em>, and ... determined by <em>Eg</em>.',
+                    suggest: 'cm⁻³ / m⁻² (原生上标) 且 $E_\\mathrm{g}$ (g设为正体下标)',
+                    originalText: 'The density is measured in units of cm⁻³ or m⁻², and the energy is determined by Eg.',
+                    cleanText: 'The density is measured in units of cm⁻³ or m⁻², and the energy is determined by Eg.',
+                    targetMark: 'mark-sub-3'
+                }
+            ],
+            'word': [
+                {
+                    id: 'word-1',
+                    badge: '学术语病措辞',
+                    badgeClass: 'badge-wording',
+                    meta: '正文 • 第 1 页',
+                    desc: '学术名词“data”是复数，谓语动词应搭配复数；“with the increase of T”属于中式英文句式，建议重构。',
+                    context: '...The data <em>is</em> consistent, and <em>with the increase of</em> temperature...',
+                    suggest: 'The data are consistent, and as the temperature increases,',
+                    originalText: 'The data is consistent, and with the increase of temperature, the peak disappears.',
+                    cleanText: 'The data are consistent, and as the temperature increases, the peak disappears.',
+                    targetMark: 'mark-word-1'
+                }
+            ]
+        };
+
+        // DOM elements
+        const ribbonButtons = {
+            'punc': document.getElementById('btn-ribbon-punc'),
+            'cap': document.getElementById('btn-ribbon-cap'),
+            'dash': document.getElementById('btn-ribbon-dash'),
+            'data': document.getElementById('btn-ribbon-data'),
+            'ital': document.getElementById('btn-ribbon-ital'),
+            'sub': document.getElementById('btn-ribbon-sub'),
+            'word': document.getElementById('btn-ribbon-word')
+        };
+        const btnKeyword = document.getElementById('btn-ribbon-keyword');
+        const btnClear = document.getElementById('btn-ribbon-clear');
+        const btnOpenRules = document.getElementById('btn-open-rules');
+
+        const docView = document.getElementById('doc-view-mode');
+        const sidebarHeader = document.getElementById('pane-header');
+        const titleText = document.getElementById('pane-title-text');
+        const panelOverview = document.getElementById('panel-overview');
+        const panelActiveScan = document.getElementById('panel-active-scan');
+        const panelKeyword = document.getElementById('panel-keyword');
+        const panelRules = document.getElementById('panel-rules');
+        const listContainer = document.getElementById('list-container');
+        const moduleErrCount = document.getElementById('module-err-count');
+        const moduleSubDesc = document.getElementById('module-sub-desc');
+        const footerStatusText = document.getElementById('footer-status-text');
+        const progressBar = document.getElementById('progress-bar');
+        const btnFixAllModule = document.getElementById('btn-fix-all-module');
+        const toast = document.getElementById('toast');
+        const toastText = document.getElementById('toast-text');
+
+        let currentActiveModule = '';
+        let modulePendingCounts = { 'punc': 1, 'cap': 1, 'dash': 1, 'data': 1, 'ital': 2, 'sub': 3, 'word': 1 };
+        let moduleInitialCounts = { 'punc': 1, 'cap': 1, 'dash': 1, 'data': 1, 'ital': 2, 'sub': 3, 'word': 1 };
+        let correctedIssuesMap = new Set(); // Track corrected ids
+
+        // Helper to reset active classes on ribbon
+        function resetRibbonActive() {
+            Object.values(ribbonButtons).forEach(btn => btn.classList.remove('active'));
+            btnKeyword.classList.remove('active');
+            btnOpenRules.classList.remove('active');
+        }
+
+        // Helper to hide all panels
+        function hideAllPanels() {
+            panelOverview.classList.add('hidden');
+            panelActiveScan.classList.add('hidden');
+            panelKeyword.style.display = 'none';
+            panelRules.style.display = 'none';
+        }
+
+        // Helper to reset document highlight visibility classes
+        function resetDocViewHighlight() {
+            docView.className = 'workspace';
+            document.querySelectorAll('.mark-item').forEach(m => {
+                m.classList.remove('selected');
+            });
+        }
+
+        // Core Specialized Module Switcher
+        function activateModule(moduleName) {
+            currentActiveModule = moduleName;
+            resetRibbonActive();
+            hideAllPanels();
+            resetDocViewHighlight();
+
+            // 1. Activate Ribbon Button UI
+            ribbonButtons[moduleName].classList.add('active');
+
+            // 2. Apply dynamic theme borders to Sidebar Header
+            sidebarHeader.className = 'taskpane-header accent-' + moduleName;
+
+            // 3. Update Title text and Sub-descriptions
+            let title = '';
+            let subDesc = '';
+            let viewClass = '';
+            let configId = '';
+
+            switch(moduleName) {
+                case 'punc':
+                    title = '标点与格式 - 专项诊断';
+                    subDesc = '检测中英文标点格式、全角符号';
+                    viewClass = 'show-punc';
+                    configId = 'cfg-punc';
+                    break;
+                case 'cap':
+                    title = '大小写规范 - 专项诊断';
+                    subDesc = '检测单位量纲、化学元素首字母';
+                    viewClass = 'show-cap';
+                    configId = 'cfg-cap';
+                    break;
+                case 'dash':
+                    title = '横线与混排 - 专项检测';
+                    subDesc = 'En-dash连接号规范与中英文数字空格';
+                    viewClass = 'show-dash';
+                    configId = 'cfg-dash';
+                    break;
+                case 'data':
+                    title = '数据与数值 - 专项诊断';
+                    subDesc = '检测数值单位空格与范围表示';
+                    viewClass = 'show-data';
+                    configId = 'cfg-data';
+                    break;
+                case 'ital':
+                    title = '变量与斜体 - 专项检测';
+                    subDesc = '单字母物理量斜体及拉丁词校验';
+                    viewClass = 'show-italics';
+                    configId = 'cfg-ital';
+                    break;
+                case 'sub':
+                    title = '角标与改写 - 专项诊断';
+                    subDesc = 'Unicode角标改写与描述性角标规范化';
+                    viewClass = 'show-subscript';
+                    configId = 'cfg-sub';
+                    break;
+                case 'word':
+                    title = '语病与措辞 - 专项诊断';
+                    subDesc = '检测 data 单复数一致性与学术冗余';
+                    viewClass = 'show-wording';
+                    configId = 'cfg-word';
+                    break;
+            }
+
+            titleText.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--primary-color)">
+                    <path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm1,15H11V15h2Zm0-4H11V7h2Z"/>
+                </svg>
+                <span>${title}</span>
+            `;
+            moduleSubDesc.textContent = subDesc;
+            docView.classList.add(viewClass);
+
+            // 4. Update configuration options in the top config box
+            document.querySelectorAll('.module-config-fields').forEach(cfg => cfg.classList.add('hidden'));
+            document.getElementById(configId).classList.remove('hidden');
+
+            // 5. Populate and render dedicated cards into Sidebar
+            renderModuleCards(moduleName);
+
+            // 6. Show active scan panel
+            panelActiveScan.classList.remove('hidden');
+            panelActiveScan.style.display = 'flex';
+
+            showToast(`${title}已激活`);
+        }
+
+        // Render Issue Cards for specific module
+        function renderModuleCards(moduleName) {
+            listContainer.innerHTML = '';
+            const issues = issueDB[moduleName] || [];
+            
+            moduleErrCount.textContent = modulePendingCounts[moduleName];
+            
+            let modCN = '学术';
+            switch(moduleName) {
+                case 'punc': modCN = '标点与格式'; break;
+                case 'cap': modCN = '大小写规范'; break;
+                case 'dash': modCN = '横线与混排'; break;
+                case 'data': modCN = '数据与数值'; break;
+                case 'ital': modCN = '变量与斜体'; break;
+                case 'sub': modCN = '角标与改写'; break;
+                case 'word': modCN = '语病与措辞'; break;
+            }
+            footerStatusText.textContent = `${modCN}专项检查`;
+            
+            // Calculate progress bar width
+            const init = moduleInitialCounts[moduleName];
+            const pend = modulePendingCounts[moduleName];
+            const pct = init > 0 ? ((init - pend) / init) * 100 : 100;
+            progressBar.style.width = `${pct}%`;
+
+            if (issues.length === 0) {
+                listContainer.innerHTML = `
+                    <div style="text-align: center; color: var(--text-secondary); padding: 40px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="var(--primary-color)">
+                            <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+                        </svg>
+                        <strong style="color: var(--text-color); font-size: 13px;">本专项诊断已全部合格！</strong>
+                        <span style="font-size: 11px;">未在本论文手稿中检测到该分类排版的问题。</span>
+                    </div>
+                `;
+                return;
+            }
+
+            issues.forEach(item => {
+                const isCorrected = correctedIssuesMap.has(item.id);
+                const card = document.createElement('div');
+                card.className = `issue-card ${isCorrected ? 'corrected' : ''}`;
+                card.id = `card-${item.id}`;
+                card.setAttribute('data-target', item.targetMark);
+                
+                if (isCorrected) {
+                    // Corrected State Card view
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <span class="issue-badge badge-corrected">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 2px;"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                                已修改 (留痕复核中)
+                            </span>
+                            <span class="issue-meta">${item.meta}</span>
+                        </div>
+                        <div class="issue-desc" style="text-decoration: line-through; opacity: 0.6;">${item.desc}</div>
+                        <div class="fix-container" style="background-color: #f6fdf6; border-color: #d1ebd1;">
+                            <div class="fix-label" style="color: #257e25;">修改后的学术规范文本:</div>
+                            <div class="fix-value" style="color: #107c41;">${item.cleanText}</div>
+                        </div>
+                        <div class="card-actions" style="display: flex; margin-top: 4px; border-top: none; padding-top: 0;">
+                            <button class="btn btn-undo" data-id="${item.id}">撤销修改 (Undo)</button>
+                        </div>
+                    `;
+                } else {
+                    // Active Error State Card view
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <span class="issue-badge ${item.badgeClass}">${item.badge}</span>
+                            <span class="issue-meta">${item.meta}</span>
+                        </div>
+                        <div class="issue-desc">${item.desc}</div>
+                        <div class="issue-context">${item.context}</div>
+                        <div class="card-actions">
+                            <div class="fix-container">
+                                <div class="fix-label">专项建议修改为:</div>
+                                <div class="fix-value">${item.suggest}</div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-accept" data-id="${item.id}" data-val="${item.cleanText}">接受修改</button>
+                                <button class="btn btn-secondary btn-ignore" data-id="${item.id}">忽略</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Card clicking interaction
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-group') || e.target.closest('.fix-container') || e.target.closest('.btn-undo')) return;
+                    
+                    const isSelected = card.classList.contains('selected');
+                    document.querySelectorAll('.issue-card').forEach(c => c.classList.remove('selected'));
+                    document.querySelectorAll('.mark-item').forEach(m => m.classList.remove('selected'));
+
+                    if (!isSelected) {
+                        card.classList.add('selected');
+                        const mark = document.getElementById(item.targetMark);
+                        if (mark) {
+                            mark.classList.add('selected');
+                            mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                });
+
+                listContainer.appendChild(card);
+            });
+
+            // Re-bind click events for dynamic card controls
+            listContainer.querySelectorAll('.btn-accept').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-id');
+                    const cleanVal = btn.getAttribute('data-val');
+                    resolveIssue(moduleName, id, cleanVal);
+                });
+            });
+
+            listContainer.querySelectorAll('.btn-ignore').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-id');
+                    ignoreIssue(moduleName, id);
+                });
+            });
+            
+            listContainer.querySelectorAll('.btn-undo').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-id');
+                    undoIssue(moduleName, id);
+                });
+            });
+        }
+
+        function resolveIssue(moduleName, id, cleanVal) {
+            const item = issueDB[moduleName].find(x => x.id === id);
+            const mark = document.getElementById(item.targetMark);
+
+            // 1. Dynamically correct Word Document page text
+            if (mark) {
+                if (cleanVal.includes('<')) {
+                    mark.innerHTML = cleanVal;
+                } else {
+                    mark.textContent = cleanVal;
+                }
+                mark.classList.add('corrected'); // Triggers faded color CSS
+            }
+
+            // 2. Add to corrected list
+            correctedIssuesMap.add(id);
+            modulePendingCounts[moduleName]--;
+
+            // 3. Re-render cards in sidebar (card stays but switches state)
+            renderModuleCards(moduleName);
+            showToast("专项格式修改成功，颜色已变淡留痕供复核！");
+        }
+
+        function undoIssue(moduleName, id) {
+            const item = issueDB[moduleName].find(x => x.id === id);
+            const mark = document.getElementById(item.targetMark);
+
+            // 1. Revert document text & restore active highlight
+            if (mark) {
+                if (item.originalText.includes('<')) {
+                    mark.innerHTML = item.originalText;
+                } else {
+                    mark.textContent = item.originalText;
+                }
+                mark.classList.remove('corrected'); // Restores vibrant color CSS
+            }
+
+            // 2. Remove from corrected list
+            correctedIssuesMap.delete(id);
+            modulePendingCounts[moduleName]++;
+
+            // 3. Re-render sidebar cards
+            renderModuleCards(moduleName);
+            showToast("已撤销修改，高亮恢复。");
+        }
+
+        // Ignore problem
+        function ignoreIssue(moduleName, id) {
+            const card = document.getElementById(`card-${id}`);
+            const item = issueDB[moduleName].find(x => x.id === id);
+            const mark = document.getElementById(item.targetMark);
+
+            if (mark) {
+                mark.className = '';
+                mark.style.backgroundColor = 'transparent';
+                mark.style.borderBottomColor = 'transparent';
+            }
+
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(-50px)';
+            setTimeout(() => {
+                card.remove();
+                
+                // Remove from issueDB to prevent re-rendering
+                issueDB[moduleName] = issueDB[moduleName].filter(x => x.id !== id);
+                modulePendingCounts[moduleName]--;
+                renderModuleCards(moduleName);
+                showToast("已忽略该项建议。");
+            }, 200);
+        }
+
+        // One-click batch fix for the entire current specialized module
+        btnFixAllModule.addEventListener('click', () => {
+            const issues = issueDB[currentActiveModule] || [];
+            let count = 0;
+            issues.forEach(item => {
+                if (!correctedIssuesMap.has(item.id)) {
+                    const mark = document.getElementById(item.targetMark);
+                    if (mark && mark.classList.contains('mark-item')) {
+                        if (item.cleanText.includes('<')) {
+                            mark.innerHTML = item.cleanText;
+                        } else {
+                            mark.textContent = item.cleanText;
+                        }
+                        mark.classList.add('corrected');
+                        correctedIssuesMap.add(item.id);
+                        count++;
+                    }
+                }
+            });
+
+            modulePendingCounts[currentActiveModule] = 0;
+            renderModuleCards(currentActiveModule);
+            showToast(`已批量执行格式改写 ${count} 处，全部转为淡色留痕！`);
+        });
+
+        // Setup Ribbon Event Listeners to switch Modules
+        Object.entries(ribbonButtons).forEach(([key, btn]) => {
+            btn.addEventListener('click', () => activateModule(key));
+        });
+
+        // Coordinate Keyword Search tab
+        btnKeyword.addEventListener('click', () => {
+            resetRibbonActive();
+            btnKeyword.classList.add('active');
+            hideAllPanels();
+            resetDocViewHighlight();
+            docView.classList.add('show-keyword');
+
+            sidebarHeader.className = 'taskpane-header accent-keyword';
+            titleText.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" style="fill: #d87c00; margin-right: 6px;">
+                    <!-- Document sheet base (semi-transparent) -->
+                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H14v-2H6V4h7v5h5v2h2V8l-6-6z" fill="#d87c00" opacity="0.35"/>
+                    <!-- Document lines -->
+                    <path d="M8 12h4v2H8v-2zm0-4h6v2H8V8z" fill="#d87c00" opacity="0.35"/>
+                    <!-- Magnifying glass overlay (solid vibrant academic gold/orange) -->
+                    <path d="M18.5 17h-.79l-.28-.27c1-.98 1.57-2.35 1.57-3.73 0-3.04-2.46-5.5-5.5-5.5S8 9.96 8 13s2.46 5.5 5.5 5.5c1.38 0 2.75-.57 3.73-1.57l.27.28v.79l4.25 4.25 1.25-1.25-4.25-4.25zm-5 0c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" fill="#d87c00" />
+                </svg>
+                <span>关键词检索与专项标记</span>
+            `;
+
+            panelKeyword.style.display = 'flex';
+            showToast("关键词查找已就绪");
+        });
+
+        // Rules configuration button
+        btnOpenRules.addEventListener('click', () => {
+            resetRibbonActive();
+            btnOpenRules.classList.add('active');
+            hideAllPanels();
+            resetDocViewHighlight();
+
+            sidebarHeader.className = 'taskpane-header';
+            titleText.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--primary-color)" style="margin-right: 6px;">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+                <span>系统个性化与高级配置</span>
+            `;
+            panelRules.style.display = 'flex';
+            showToast("系统高级设置已打开");
+        });
+
+        // Safe Clear Highlights from Ribbon (Completely Strips Background)
+        btnClear.addEventListener('click', () => {
+            let colorCls = '';
+            switch(currentActiveModule) {
+                case 'punc': colorCls = 'mark-punctuation'; break;
+                case 'cap': colorCls = 'mark-capitalization'; break;
+                case 'dash': colorCls = 'mark-dash-spacing'; break;
+                case 'data': colorCls = 'mark-data-space'; break;
+                case 'ital': colorCls = 'mark-italics'; break;
+                case 'sub': colorCls = 'mark-subscript'; break;
+                case 'word': colorCls = 'mark-wording'; break;
+            }
+            
+            // Completely strip the visual highlights belonging to the CURRENT ACTIVE MODULE
+            if (colorCls) {
+                document.querySelectorAll('.' + colorCls).forEach(mark => {
+                    mark.style.backgroundColor = 'transparent';
+                    mark.style.borderBottomColor = 'transparent';
+                    mark.className = ''; // remove highlights entirely
+                });
+            }
+            
+            // Clear lists only for active module
+            if (currentActiveModule) {
+                issueDB[currentActiveModule] = [];
+                modulePendingCounts[currentActiveModule] = 0;
+                renderModuleCards(currentActiveModule);
+            }
+            const preserveUserHl = document.getElementById('chk-preserve-user-hl').checked;
+            showToast(preserveUserHl ? "已彻底剥离诊断标记，您的手动荧光笔高亮已受保护！" : "终稿输出：已彻底剥离文档中所有高亮标记。");
+        });
+
+        // Color selector in keyword tab
+        const colorOpts = document.querySelectorAll('.color-option');
+        colorOpts.forEach(opt => {
+            opt.addEventListener('click', () => {
+                colorOpts.forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+            });
+        });
+
+        // Keyword Search mock functionality
+        const btnStartSearch = document.getElementById('btn-start-search');
+        btnStartSearch.addEventListener('click', () => {
+            const val = document.getElementById('kw-input').value.trim();
+            if (!val) {
+                alert("请输入待查找的关键词！");
+                return;
+            }
+
+            const keywords = val.split(/[,，;；]/).map(k => k.trim()).filter(k => k);
+            const statsBox = document.getElementById('search-results-box');
+            const statsList = document.getElementById('search-stats-list');
+            
+            statsList.innerHTML = '';
+            statsBox.style.display = 'block';
+
+            let hasMatch = false;
+
+            keywords.forEach(kw => {
+                let occurrences = 0;
+                
+                const textElements = document.querySelectorAll('.doc-paragraph');
+                textElements.forEach(el => {
+                    const text = el.textContent;
+                    const regex = new RegExp(kw, 'gi');
+                    const matches = text.match(regex);
+                    if (matches) {
+                        occurrences += matches.length;
+                        hasMatch = true;
+
+                        // Wrap with specific colors selected by user
+                        const selectedColorHex = document.querySelector('.color-option.selected').style.backgroundColor;
+                        el.innerHTML = el.innerHTML.replace(
+                            new RegExp(`(${kw})`, 'gi'), 
+                            `<span class="mark-item mark-keyword" style="background-color: ${selectedColorHex.replace('rgb', 'rgba').replace(')', ', 0.35)')}">${kw}</span>`
+                        );
+                    }
+                });
+
+                if (occurrences > 0) {
+                    const item = document.createElement('div');
+                    item.style.cssText = "background: #f9fbf9; border: 1px solid #dedebe; padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;";
+                    item.innerHTML = `
+                        <div><strong>"${kw}"</strong> • 发现 <span style="color: var(--primary-color); font-weight: bold;">${occurrences}</span> 处</div>
+                        <span style="font-size: 10px; color: var(--text-secondary);">正文第 1 页</span>
+                    `;
+                    statsList.appendChild(item);
+                } else {
+                    const item = document.createElement('div');
+                    item.style.cssText = "background: #fcf6f5; border: 1px solid #ebd2ce; padding: 8px; border-radius: 4px; color: #a80000;";
+                    item.innerHTML = `未检测到关键词 <strong>"${kw}"</strong>`;
+                    statsList.appendChild(item);
+                }
+            });
+
+            if (hasMatch) {
+                showToast("关键词高亮标记完成！");
+            }
+        });
+
+        // Clicking mock document range triggers active card selection
+        document.querySelectorAll('.mark-item').forEach(mark => {
+            mark.addEventListener('click', () => {
+                const markId = mark.getAttribute('data-id');
+                // Detect which module this mark belongs to
+                let parentModule = '';
+                if (mark.classList.contains('mark-punctuation')) parentModule = 'punc';
+                else if (mark.classList.contains('mark-capitalization')) parentModule = 'cap';
+                else if (mark.classList.contains('mark-dash-spacing')) parentModule = 'dash';
+                else if (mark.classList.contains('mark-data-space')) parentModule = 'data';
+                else if (mark.classList.contains('mark-italics')) parentModule = 'ital';
+                else if (mark.classList.contains('mark-subscript')) parentModule = 'sub';
+                else if (mark.classList.contains('mark-wording')) parentModule = 'word';
+
+                if (parentModule) {
+                    if (currentActiveModule !== parentModule) {
+                        activateModule(parentModule);
+                    }
+                    setTimeout(() => {
+                        const card = document.getElementById(`card-${markId}`);
+                        if (card) card.click();
+                    }, 50);
+                }
+            });
+        });
+
+        function updateSubscriptIssues() {
+            const useNative = document.getElementById('chk-use-native-format').checked;
+            
+            // Sync text label in active scan panel
+            const labelPref = document.getElementById('txt-current-sub-preference');
+            if (labelPref) {
+                labelPref.textContent = useNative ? "Word 原生格式 (推荐)" : "Unicode 字符流";
+            }
+            
+            if (useNative) {
+                // H2O and SiO2
+                issueDB['sub'][0].suggest = 'H<sub>2</sub>O and SiO<sub>2</sub> (Word 原生格式)';
+                issueDB['sub'][0].cleanText = 'The solution containing H<sub>2</sub>O and dissolved SiO<sub>2</sub> was analyzed.';
+                
+                // Al2O3
+                issueDB['sub'][1].suggest = 'Al<sub>2</sub>O<sub>3</sub> (Word 原生格式)';
+                issueDB['sub'][1].cleanText = 'the thickness of Al<sub>2</sub>O<sub>3</sub> layer determines the gate capacitance.';
+                
+                // cm-3, m-2, Eg
+                issueDB['sub'][2].suggest = 'cm<sup>-3</sup> / m<sup>-2</sup> 且 E<sub>g</sub> (Word 原生格式)';
+                issueDB['sub'][2].cleanText = 'The density is measured in units of cm<sup>-3</sup> or m<sup>-2</sup>, and the energy is determined by E<sub>g</sub>.';
+            } else {
+                // H₂O and SiO₂
+                issueDB['sub'][0].suggest = 'H₂O and SiO₂ (使用 Unicode 字符)';
+                issueDB['sub'][0].cleanText = 'The solution containing H₂O and dissolved SiO₂ was analyzed.';
+                
+                // Al₂O₃
+                issueDB['sub'][1].suggest = 'Al₂O₃ (使用 Unicode 字符)';
+                issueDB['sub'][1].cleanText = 'the thickness of Al₂O₃ layer determines the gate capacitance.';
+                
+                // cm⁻³ / m⁻² / Eg
+                issueDB['sub'][2].suggest = 'cm⁻³ / m⁻² 且 Eg (使用 Unicode 字符)';
+                issueDB['sub'][2].cleanText = 'The density is measured in units of cm⁻³ or m⁻², and the energy is determined by Eg.';
+            }
+
+            // Update document highlights if they are ALREADY corrected
+            issueDB['sub'].forEach(item => {
+                if (correctedIssuesMap.has(item.id)) {
+                    const mark = document.getElementById(item.targetMark);
+                    if (mark) {
+                        if (item.cleanText.includes('<')) {
+                            mark.innerHTML = item.cleanText;
+                        } else {
+                            mark.textContent = item.cleanText;
+                        }
+                    }
+                }
+            });
+
+            if (currentActiveModule === 'sub') {
+                renderModuleCards('sub');
+            }
+        }
+
+        // Jump link inside subscript scanning panel
+        const linkGotoSettings = document.getElementById('link-goto-settings');
+        if (linkGotoSettings) {
+            linkGotoSettings.addEventListener('click', (e) => {
+                e.preventDefault();
+                btnOpenRules.click();
+                
+                // Visual feedback highlight transition
+                const secSubSettings = document.getElementById('sec-sub-settings');
+                if (secSubSettings) {
+                    secSubSettings.style.outline = '2px solid var(--primary-color)';
+                    secSubSettings.style.boxShadow = '0 0 12px rgba(16, 124, 65, 0.4)';
+                    secSubSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => {
+                        secSubSettings.style.outline = 'none';
+                        secSubSettings.style.boxShadow = 'none';
+                    }, 1500);
+                }
+            });
+        }
+
+        // Bind event listener and run initial setup
+        const chkUseNativeFormat = document.getElementById('chk-use-native-format');
+        if (chkUseNativeFormat) {
+            chkUseNativeFormat.addEventListener('change', updateSubscriptIssues);
+        }
+        updateSubscriptIssues();
+
+        // Bind event listeners to new advanced academic safety settings
+        ['greek-unify', 'preserve-user-hl', 'equation-punc', 'cross-ref-cap', 'auto-backup', 'variable-lock'].forEach(id => {
+            const chk = document.getElementById('chk-' + id);
+            if (chk) {
+                chk.addEventListener('change', () => {
+                    showToast(`已${chk.checked ? '开启' : '关闭'}：${chk.parentNode.textContent.trim().split('\n')[0]}`);
+                });
+            }
+        });
+
+        function showToast(text) {
+            toastText.textContent = text;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
