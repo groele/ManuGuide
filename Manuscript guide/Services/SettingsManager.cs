@@ -38,7 +38,8 @@ namespace Manuscript_guide.Services
             { "ital", "#5CFF5C" },
             { "sub",  "#B84DFF" },
             { "word", "#33B2B2" },
-            { "keyword", "#FFFF33" }
+            { "keyword", "#FFFF33" },
+            { "protected", "#D0D7DE" }
         };
 
         // Per-rule enable switches. Key format: module.ruleId, e.g. punc.fullwidth_punctuation.
@@ -149,7 +150,10 @@ namespace Manuscript_guide.Services
             switch (rule.Key)
             {
                 case "global.filter_references_and_citations":
+                case "global.skip_latex_formula_regions":
                     return true;
+                case "global.mark_skipped_formula_regions":
+                    return false;
                 case "global.preserve_user_highlights":
                     return _current.PreserveUserHighlights;
                 case "global.auto_backup_before_bulk_fix":

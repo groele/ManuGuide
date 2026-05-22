@@ -34,6 +34,11 @@ namespace Manuscript_guide.Scanners
                 Regex missingSpaceRegex = new Regex(@"([a-zA-Z0-9])([,;:?!])([a-zA-Z])");
                 foreach (Match match in missingSpaceRegex.Matches(text))
                 {
+                    if (LooksLikeUrlOrEmailContext(text, match.Index))
+                    {
+                        continue;
+                    }
+
                     string orig = match.Value;
                     string replacement = match.Groups[1].Value + match.Groups[2].Value + " " + match.Groups[3].Value;
 
@@ -85,6 +90,12 @@ namespace Manuscript_guide.Scanners
             // 4. Word Inline Equation punctuation and spacing audit
             bool checkEquationSpacing = SettingsManager.IsRuleEnabled(ModuleType, "equation_spacing");
             bool checkEquationTerminalPunctuation = SettingsManager.IsRuleEnabled(ModuleType, "equation_terminal_punctuation");
+            if (ProtectedRangeService.IsFormulaProtectionEnabled())
+            {
+                checkEquationSpacing = false;
+                checkEquationTerminalPunctuation = false;
+            }
+
             if (checkEquationSpacing || checkEquationTerminalPunctuation)
             {
                 try
@@ -102,23 +113,20 @@ namespace Manuscript_guide.Scanners
                             string preText = preRange.Text;
                             if (!string.IsNullOrEmpty(preText) && Regex.IsMatch(preText, @"[a-zA-Z0-9]"))
                             {
-                                string issueId = Guid.NewGuid().ToString();
-                                Range r = doc.Range(start - 1, start); // Select boundary letter
-                                CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                                ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                                issues.Add(new IssueItem
+                                IssueItem issue = IssueMatchFactory.Create(
+                                    doc,
+                                    text,
+                                    ModuleType,
+                                    "EquationSpacing",
+                                    start - 1,
+                                    1,
+                                    preText,
+                                    preText + " ",
+                                    "公式域与前文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
+                                if (issue != null)
                                 {
-                                    IssueId = issueId,
-                                    Type = ModuleType,
-                                    Subtype = "EquationSpacing",
-                                    Start = start - 1,
-                                    End = start,
-                                    OriginalText = preText,
-                                    RecommendFix = preText + " ",
-                                    Desc = "公式域与前文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。",
-                                    Context = GetContextSnippet(text, start - 1, 2)
-                                });
+                                    issues.Add(issue);
+                                }
                             }
                         }
 
@@ -131,23 +139,20 @@ namespace Manuscript_guide.Scanners
                             // Missing space after formula when followed by an alphanumeric character
                             if (checkEquationSpacing && !string.IsNullOrEmpty(postText) && Regex.IsMatch(postText, @"[a-zA-Z0-9]"))
                             {
-                                string issueId = Guid.NewGuid().ToString();
-                                Range r = doc.Range(end, end + 1);
-                                CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                                ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                                issues.Add(new IssueItem
+                                IssueItem issue = IssueMatchFactory.Create(
+                                    doc,
+                                    text,
+                                    ModuleType,
+                                    "EquationSpacing",
+                                    end,
+                                    1,
+                                    postText,
+                                    " " + postText,
+                                    "公式域与后文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
+                                if (issue != null)
                                 {
-                                    IssueId = issueId,
-                                    Type = ModuleType,
-                                    Subtype = "EquationSpacing",
-                                    Start = end,
-                                    End = end + 1,
-                                    OriginalText = postText,
-                                    RecommendFix = " " + postText,
-                                    Desc = "公式域与后文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。",
-                                    Context = GetContextSnippet(text, end, 2)
-                                });
+                                    issues.Add(issue);
+                                }
                             }
 
                             // Missing punctuation when equation paragraph ends
@@ -157,23 +162,20 @@ namespace Manuscript_guide.Scanners
                                 string lastChar = lastCharRange.Text;
                                 if (!string.IsNullOrEmpty(lastChar) && !Regex.IsMatch(lastChar, @"[,.;:?!，。；：？！]"))
                                 {
-                                    string issueId = Guid.NewGuid().ToString();
-                                    Range r = doc.Range(end - 1, end);
-                                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                                    issues.Add(new IssueItem
+                                    IssueItem issue = IssueMatchFactory.Create(
+                                        doc,
+                                        text,
+                                        ModuleType,
+                                        "EquationPunctuation",
+                                        end - 1,
+                                        1,
+                                        lastChar,
+                                        lastChar + ".",
+                                        "行内或独立公式作为句子结尾，末尾遗漏了标点符号（如句点“.”或逗号“,”），请检查并规范。");
+                                    if (issue != null)
                                     {
-                                        IssueId = issueId,
-                                        Type = ModuleType,
-                                        Subtype = "EquationPunctuation",
-                                        Start = end - 1,
-                                        End = end,
-                                        OriginalText = lastChar,
-                                        RecommendFix = lastChar + ".",
-                                        Desc = "行内或独立公式作为句子结尾，末尾遗漏了标点符号（如句点“.”或逗号“,”），请检查并规范。",
-                                        Context = GetContextSnippet(text, end - 1, 1)
-                                    });
+                                        issues.Add(issue);
+                                    }
                                 }
                             }
                         }
@@ -193,6 +195,12 @@ namespace Manuscript_guide.Scanners
             int index = text.IndexOf(target);
             while (index != -1)
             {
+                if (!IsLikelyEnglishContext(text, index))
+                {
+                    index = text.IndexOf(target, index + 1);
+                    continue;
+                }
+
                 IssueItem issue = IssueMatchFactory.Create(
                     doc,
                     text,
@@ -210,6 +218,29 @@ namespace Manuscript_guide.Scanners
 
                 index = text.IndexOf(target, index + 1);
             }
+        }
+
+        private static bool IsLikelyEnglishContext(string text, int index)
+        {
+            int start = Math.Max(0, index - 18);
+            int end = Math.Min(text.Length, index + 19);
+            for (int i = start; i < end; i++)
+            {
+                if ((text[i] >= 'A' && text[i] <= 'Z') || (text[i] >= 'a' && text[i] <= 'z'))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool LooksLikeUrlOrEmailContext(string text, int index)
+        {
+            int start = Math.Max(0, index - 30);
+            int end = Math.Min(text.Length, index + 31);
+            string window = text.Substring(start, end - start);
+            return Regex.IsMatch(window, @"(https?://|www\.|@\w|[\w.-]+\.[A-Za-z]{2,})", RegexOptions.IgnoreCase);
         }
 
         public static string GetContextSnippet(string text, int index, int length)

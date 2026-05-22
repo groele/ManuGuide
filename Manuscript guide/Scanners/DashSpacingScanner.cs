@@ -26,26 +26,21 @@ namespace Manuscript_guide.Scanners
                 Regex cjkToLatin = new Regex(@"([\u4e00-\u9fa5])([a-zA-Z0-9])");
                 foreach (Match match in cjkToLatin.Matches(text))
                 {
-                    // Ensure we don't trigger on internal Word formatting codes
                     string matched = match.Value;
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                    issues.Add(new IssueItem
+                    IssueItem issue = IssueMatchFactory.Create(
+                        doc,
+                        text,
+                        ModuleType,
+                        "CJKLatinSpacing",
+                        match.Index,
+                        match.Length,
+                        matched,
+                        match.Groups[1].Value + " " + match.Groups[2].Value,
+                        $"中文与英文/数字“{matched}”之间应留有一个半角空格以优化排版视觉体验。");
+                    if (issue != null)
                     {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "CJKLatinSpacing",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = matched,
-                        RecommendFix = match.Groups[1].Value + " " + match.Groups[2].Value,
-                        Desc = $"中文与英文/数字“{matched}”之间应留有一个半角空格以优化排版视觉体验。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                        issues.Add(issue);
+                    }
                 }
             }
 
@@ -56,24 +51,20 @@ namespace Manuscript_guide.Scanners
                 foreach (Match match in latinToCjk.Matches(text))
                 {
                     string matched = match.Value;
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                    issues.Add(new IssueItem
+                    IssueItem issue = IssueMatchFactory.Create(
+                        doc,
+                        text,
+                        ModuleType,
+                        "LatinCJKSpacing",
+                        match.Index,
+                        match.Length,
+                        matched,
+                        match.Groups[1].Value + " " + match.Groups[2].Value,
+                        $"英文/数字与中文“{matched}”之间应留有一个半角空格以优化排版视觉体验。");
+                    if (issue != null)
                     {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "LatinCJKSpacing",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = matched,
-                        RecommendFix = match.Groups[1].Value + " " + match.Groups[2].Value,
-                        Desc = $"英文/数字与中文“{matched}”之间应留有一个半角空格以优化排版视觉体验。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                        issues.Add(issue);
+                    }
                 }
             }
 
@@ -96,24 +87,20 @@ namespace Manuscript_guide.Scanners
                         string matched = match.Value;
                         string replacement = matched.Replace("-", "–"); // En-dash (U+2013)
 
-                        Range r = doc.Range(match.Index, match.Index + match.Length);
-                        string issueId = Guid.NewGuid().ToString();
-
-                        CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                        ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                        issues.Add(new IssueItem
+                        IssueItem issue = IssueMatchFactory.Create(
+                            doc,
+                            text,
+                            ModuleType,
+                            "HyphenToEnDash",
+                            match.Index,
+                            match.Length,
+                            matched,
+                            replacement,
+                            $"表示并列或关联特征的学术复合词组“{matched}”，中间应使用标准的 En-dash（–，U+2013）而非普通连字符（-）。");
+                        if (issue != null)
                         {
-                            IssueId = issueId,
-                            Type = ModuleType,
-                            Subtype = "HyphenToEnDash",
-                            Start = match.Index,
-                            End = match.Index + match.Length,
-                            OriginalText = matched,
-                            RecommendFix = replacement,
-                            Desc = $"表示并列或关联特征的学术复合词组“{matched}”，中间应使用标准的 En-dash（–，U+2013）而非普通连字符（-）。",
-                            Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                        });
+                            issues.Add(issue);
+                        }
                     }
                 }
             }

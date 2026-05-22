@@ -10,7 +10,12 @@ namespace Manuscript_guide.Services
 
         public static void ApplyActiveShading(Range range, string moduleType)
         {
-            if (ProtectedRangeService.IsRangeProtected(range))
+            ApplyActiveShading(range, moduleType, false);
+        }
+
+        public static void ApplyActiveShading(Range range, string moduleType, bool allowProtected)
+        {
+            if (!allowProtected && ProtectedRangeService.IsRangeProtected(range))
             {
                 return;
             }
@@ -24,7 +29,12 @@ namespace Manuscript_guide.Services
 
         public static void ApplyFadedShading(Range range, string moduleType)
         {
-            if (ProtectedRangeService.IsRangeProtected(range))
+            ApplyFadedShading(range, moduleType, false);
+        }
+
+        public static void ApplyFadedShading(Range range, string moduleType, bool allowProtected)
+        {
+            if (!allowProtected && ProtectedRangeService.IsRangeProtected(range))
             {
                 return;
             }
@@ -57,6 +67,7 @@ namespace Manuscript_guide.Services
             string modulePrefix = string.Equals(moduleType, "all", StringComparison.OrdinalIgnoreCase)
                 ? BookmarkPrefix
                 : CorrectionTracker.GetBookmarkPrefixForModule(moduleType);
+            bool allowProtectedClear = string.Equals(moduleType, "protected", StringComparison.OrdinalIgnoreCase);
 
             for (int i = doc.Bookmarks.Count; i >= 1; i--)
             {
@@ -65,7 +76,8 @@ namespace Manuscript_guide.Services
                     Bookmark bookmark = doc.Bookmarks[i];
                     if (bookmark.Name.StartsWith(modulePrefix, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (ProtectedRangeService.IsRangeProtected(bookmark.Range))
+                        bool isProtectedMarker = bookmark.Name.StartsWith(CorrectionTracker.GetBookmarkPrefixForModule("protected"), StringComparison.OrdinalIgnoreCase);
+                        if (!allowProtectedClear && !isProtectedMarker && ProtectedRangeService.IsRangeProtected(bookmark.Range))
                         {
                             continue;
                         }

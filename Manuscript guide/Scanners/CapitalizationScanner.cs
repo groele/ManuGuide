@@ -85,24 +85,8 @@ namespace Manuscript_guide.Scanners
                     {
                         // Redundant definition: second definition occurrence in text
                         int idx = match.Index;
-                        Range r = doc.Range(idx, idx + match.Length);
-                        string issueId = Guid.NewGuid().ToString();
-
-                        CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                        ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                        issues.Add(new IssueItem
-                        {
-                            IssueId = issueId,
-                            Type = ModuleType,
-                            Subtype = "RedundantDefinition",
-                            Start = idx,
-                            End = idx + match.Length,
-                            OriginalText = match.Value,
-                            RecommendFix = acronym, // replace redundant definition with just the acronym
-                            Desc = $"缩写词 '{acronym}' 已在前文定义过，此处重复定义。",
-                            Context = PunctuationScanner.GetContextSnippet(text, idx, match.Length)
-                        });
+                        AddIssue(doc, text, issues, "RedundantDefinition", idx, match.Length, match.Value, acronym,
+                            $"缩写词 '{acronym}' 已在前文定义过，此处重复定义。");
                     }
                 }
             }
@@ -140,24 +124,8 @@ namespace Manuscript_guide.Scanners
                 if (!definitionPositions.ContainsKey(acronym))
                 {
                     // Acronym has no definition anywhere in the document
-                    Range r = doc.Range(firstUseIndex, firstUseIndex + acronym.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                    issues.Add(new IssueItem
-                    {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "UndefinedAcronym",
-                        Start = firstUseIndex,
-                        End = firstUseIndex + acronym.Length,
-                        OriginalText = acronym,
-                        RecommendFix = acronym + " (Supplement Definition)",
-                        Desc = $"缩写词 '{acronym}' 首次出现，但全文中均未检测到对应的全称定义。",
-                        Context = PunctuationScanner.GetContextSnippet(text, firstUseIndex, acronym.Length)
-                    });
+                    AddIssue(doc, text, issues, "UndefinedAcronym", firstUseIndex, acronym.Length, acronym, acronym + " (Supplement Definition)",
+                        $"缩写词 '{acronym}' 首次出现，但全文中均未检测到对应的全称定义。");
                 }
                 else
                 {
@@ -166,26 +134,10 @@ namespace Manuscript_guide.Scanners
                     if (firstUseIndex < defIndex)
                     {
                         // Definition lag! Acronym used before the definition
-                        Range r = doc.Range(firstUseIndex, firstUseIndex + acronym.Length);
-                        string issueId = Guid.NewGuid().ToString();
-
-                        CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                        ShadingManager.ApplyActiveShading(r, ModuleType);
-
                         string fullDefText = definitionTexts[acronym];
 
-                        issues.Add(new IssueItem
-                        {
-                            IssueId = issueId,
-                            Type = ModuleType,
-                            Subtype = "DefinitionLag",
-                            Start = firstUseIndex,
-                            End = firstUseIndex + acronym.Length,
-                            OriginalText = acronym,
-                            RecommendFix = $"{fullDefText} ({acronym})",
-                            Desc = $"缩写词 '{acronym}' 出现滞后定义。在第 {firstUseIndex} 字符处首次使用，但全称定义 '{fullDefText}' 却延迟在第 {defIndex} 字符处才给出。建议将全称定义迁移至首次出现处。",
-                            Context = PunctuationScanner.GetContextSnippet(text, firstUseIndex, acronym.Length)
-                        });
+                        AddIssue(doc, text, issues, "DefinitionLag", firstUseIndex, acronym.Length, acronym, $"{fullDefText} ({acronym})",
+                            $"缩写词 '{acronym}' 出现滞后定义。在第 {firstUseIndex} 字符处首次使用，但全称定义 '{fullDefText}' 却延迟在第 {defIndex} 字符处才给出。建议将全称定义迁移至首次出现处。");
                     }
                 }
             }
@@ -270,24 +222,8 @@ namespace Manuscript_guide.Scanners
                             // All minority occurrences are flagged as inconsistent
                             foreach (int charIndex in varKvp.Value)
                             {
-                                Range r = doc.Range(charIndex, charIndex + spelling.Length);
-                                string issueId = Guid.NewGuid().ToString();
-
-                                CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                                ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                                issues.Add(new IssueItem
-                                {
-                                    IssueId = issueId,
-                                    Type = ModuleType,
-                                    Subtype = "CasingInconsistency",
-                                    Start = charIndex,
-                                    End = charIndex + spelling.Length,
-                                    OriginalText = spelling,
-                                    RecommendFix = majorityVariant,
-                                    Desc = $"大小写全局不一致。全篇主要使用 '{majorityVariant}' （{maxCount}次，占比 {ratio:F1}%），而此处拼写为 '{spelling}'。",
-                                    Context = PunctuationScanner.GetContextSnippet(text, charIndex, spelling.Length)
-                                });
+                                AddIssue(doc, text, issues, "CasingInconsistency", charIndex, spelling.Length, spelling, majorityVariant,
+                                    $"大小写全局不一致。全篇主要使用 '{majorityVariant}' （{maxCount}次，占比 {ratio:F1}%），而此处拼写为 '{spelling}'。");
                             }
                         }
                     }
@@ -345,25 +281,27 @@ namespace Manuscript_guide.Scanners
                     string orig = match.Value;
                     string replacement = capitalizedWord + spacing + number;
 
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                    issues.Add(new IssueItem
-                    {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "CrossRefCapitalization",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = orig,
-                        RecommendFix = replacement,
-                        Desc = $"学术交叉引用首字母应大写。此处将 '{orig}' 识别为对特定图表/文献的引用，建议规范化为大写开头的 '{replacement}'。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                    AddIssue(doc, text, issues, "CrossRefCapitalization", match.Index, match.Length, orig, replacement,
+                        $"学术交叉引用首字母应大写。此处将 '{orig}' 识别为对特定图表/文献的引用，建议规范化为大写开头的 '{replacement}'。");
                 }
+            }
+        }
+
+        private void AddIssue(Document doc, string text, List<IssueItem> issues, string subtype, int start, int length, string originalText, string recommendFix, string description)
+        {
+            IssueItem issue = IssueMatchFactory.Create(
+                doc,
+                text,
+                ModuleType,
+                subtype,
+                start,
+                length,
+                originalText,
+                recommendFix,
+                description);
+            if (issue != null)
+            {
+                issues.Add(issue);
             }
         }
     }

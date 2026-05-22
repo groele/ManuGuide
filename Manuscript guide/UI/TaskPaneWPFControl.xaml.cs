@@ -154,6 +154,8 @@ namespace Manuscript_guide.UI
                 {
                     using (DocumentScanContext.Begin(doc))
                     {
+                        ProtectedRangeService.RefreshProtectedMarkers(doc);
+
                         // Clear existing highlights of this module first
                         ShadingManager.ClearModuleShading(doc, moduleType);
                         progressAudit.Value = 40;
@@ -223,6 +225,8 @@ namespace Manuscript_guide.UI
                 {
                     using (DocumentScanContext.Begin(doc))
                     {
+                        ProtectedRangeService.RefreshProtectedMarkers(doc);
+
                         List<IssueItem> allIssues = new List<IssueItem>();
                         int completed = 0;
 
@@ -537,8 +541,65 @@ namespace Manuscript_guide.UI
             }
         }
 
+        private void IssueCard_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            DependencyObject source = e.OriginalSource as DependencyObject;
+            if (source != null && FindParent<Button>(source) != null)
+            {
+                return;
+            }
+
+            FrameworkElement element = sender as FrameworkElement;
+            IssueItem issue = element == null ? null : element.DataContext as IssueItem;
+            if (issue == null)
+            {
+                return;
+            }
+
+            JumpToIssue(issue);
+            e.Handled = true;
+        }
+
+        private void JumpToIssue(IssueItem issue)
+        {
+            try
+            {
+                Word.Document doc = Globals.ThisAddIn.Application.ActiveDocument;
+                Word.Range range = null;
+
+                string bookmarkName = CorrectionTracker.Instance.FindBookmarkName(doc, issue.IssueId);
+                if (!string.IsNullOrEmpty(bookmarkName) && doc.Bookmarks.Exists(bookmarkName))
+                {
+                    range = doc.Bookmarks[bookmarkName].Range;
+                }
+                else if (issue.Start >= 0 && issue.End > issue.Start && issue.End <= doc.Content.End)
+                {
+                    range = doc.Range(issue.Start, issue.End);
+                }
+
+                if (range == null)
+                {
+                    ShowToast("原文定位已失效，请重新扫描。");
+                    return;
+                }
+
+                range.Select();
+                Globals.ThisAddIn.Application.Activate();
+                ShowToast("已跳转到原文位置。");
+            }
+            catch
+            {
+                ShowToast("原文定位已失效，请重新扫描。");
+            }
+        }
+
         private T FindParent<T>(DependencyObject child) where T : DependencyObject
         {
+            if (child == null)
+            {
+                return null;
+            }
+
             DependencyObject parent = VisualTreeHelper.GetParent(child);
             while (parent != null && !(parent is T))
             {
@@ -605,6 +666,8 @@ namespace Manuscript_guide.UI
                     int count = 0;
                     using (DocumentScanContext.Begin(doc))
                     {
+                        ProtectedRangeService.RefreshProtectedMarkers(doc);
+
                         ShadingManager.ClearModuleShading(doc, "keyword");
 
                         string[] words = keywords.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
@@ -985,6 +1048,8 @@ namespace Manuscript_guide.UI
             }
 
             settings.EnabledRules["global.filter_references_and_citations"] = true;
+            settings.EnabledRules["global.skip_latex_formula_regions"] = true;
+            settings.EnabledRules["global.mark_skipped_formula_regions"] = false;
             settings.EnabledRules["global.preserve_user_highlights"] = settings.PreserveUserHighlights;
             settings.EnabledRules["global.auto_backup_before_bulk_fix"] = settings.AutoBackup;
             settings.EnabledRules["punc.greek_mu_encoding"] = settings.UnifyGreekMu;

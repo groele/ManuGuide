@@ -18,14 +18,38 @@ namespace Manuscript_guide.Scanners
             string recommendFix,
             string description)
         {
+            if (doc == null || string.IsNullOrEmpty(documentText) || start < 0 || length <= 0)
+            {
+                return null;
+            }
+
+            if (start + length > doc.Content.End)
+            {
+                return null;
+            }
+
             string issueId = Guid.NewGuid().ToString();
-            Range range = doc.Range(start, start + length);
+            Range range;
+            try
+            {
+                range = doc.Range(start, start + length);
+            }
+            catch
+            {
+                return null;
+            }
+
             if (ProtectedRangeService.IsRangeProtected(range))
             {
                 return null;
             }
 
-            CorrectionTracker.Instance.CreateBookmark(doc, issueId, range, moduleType);
+            string bookmarkName = CorrectionTracker.Instance.CreateBookmark(doc, issueId, range, moduleType);
+            if (string.IsNullOrEmpty(bookmarkName))
+            {
+                return null;
+            }
+
             ShadingManager.ApplyActiveShading(range, moduleType);
 
             return new IssueItem

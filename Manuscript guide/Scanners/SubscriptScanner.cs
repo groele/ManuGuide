@@ -43,12 +43,6 @@ namespace Manuscript_guide.Scanners
                 foreach (Match match in unicodeSubSupRegex.Matches(text))
                 {
                     string origText = match.Value;
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
                     // Determine sub-type
                     string formatType = "chemical";
                     if (Regex.IsMatch(origText, @"[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼]"))
@@ -59,18 +53,8 @@ namespace Manuscript_guide.Scanners
                     // Predict clean translation recommendation
                     string recommend = SubscriptFormatter.ConvertToAsciiText(origText, formatType);
 
-                    issues.Add(new IssueItem
-                    {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "UnicodeSubscript",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = origText,
-                        RecommendFix = recommend, // Under the hood, custom correction applies SubscriptFormatter
-                        Desc = $"当前正文角标规范为 Word 原生角标。检测到 Unicode 编码的上下标字符“{origText}”，建议转换为标准 ASCII 字符并应用 Word 原生上下标格式。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                    AddIssue(doc, text, issues, "UnicodeSubscript", match.Index, match.Length, origText, recommend,
+                        $"当前正文角标规范为 Word 原生角标。检测到 Unicode 编码的上下标字符“{origText}”，建议转换为标准 ASCII 字符并应用 Word 原生上下标格式。");
                 }
             }
 
@@ -91,24 +75,11 @@ namespace Manuscript_guide.Scanners
 
                     if (hasUnformattedDigit)
                     {
-                        string issueId = Guid.NewGuid().ToString();
-                        CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                        ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                        issues.Add(new IssueItem
-                        {
-                            IssueId = issueId,
-                            Type = ModuleType,
-                            Subtype = "ChemicalSubscriptMissing",
-                            Start = match.Index,
-                            End = match.Index + match.Length,
-                            OriginalText = formula,
-                            RecommendFix = settings.UseNativeSubscript ? formula : SubscriptFormatter.ConvertToUnicodeSubSup(formula, "chemical"),
-                            Desc = settings.UseNativeSubscript
-                                ? $"当前正文角标规范为 Word 原生角标。检测到由合法元素符号组成的化学式“{formula}”，其中数字未进行下标格式化；建议保留 ASCII 文本并应用 Word 原生下标。"
-                                : $"当前正文角标规范为 Unicode 角标字符。检测到由合法元素符号组成的化学式“{formula}”，建议直接改写为“{SubscriptFormatter.ConvertToUnicodeSubSup(formula, "chemical")}”。",
-                            Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                        });
+                        string recommendation = settings.UseNativeSubscript ? formula : SubscriptFormatter.ConvertToUnicodeSubSup(formula, "chemical");
+                        string description = settings.UseNativeSubscript
+                            ? $"当前正文角标规范为 Word 原生角标。检测到由合法元素符号组成的化学式“{formula}”，其中数字未进行下标格式化；建议保留 ASCII 文本并应用 Word 原生下标。"
+                            : $"当前正文角标规范为 Unicode 角标字符。检测到由合法元素符号组成的化学式“{formula}”，建议直接改写为“{SubscriptFormatter.ConvertToUnicodeSubSup(formula, "chemical")}”。";
+                        AddIssue(doc, text, issues, "ChemicalSubscriptMissing", match.Index, match.Length, formula, recommendation, description);
                     }
                 }
             }
@@ -139,25 +110,8 @@ namespace Manuscript_guide.Scanners
 
                     if (needFormatting)
                     {
-                        string issueId = Guid.NewGuid().ToString();
-                        CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                        ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                        string mainVar = word.Substring(0, 1);
-                        string subLabel = word.Substring(1);
-
-                        issues.Add(new IssueItem
-                        {
-                            IssueId = issueId,
-                            Type = ModuleType,
-                            Subtype = "DescriptiveSubscript",
-                            Start = match.Index,
-                            End = match.Index + match.Length,
-                            OriginalText = word,
-                            RecommendFix = word, // Corrects via SubscriptFormatter "desc" (mainVar italic, subLabel subscript+upright)
-                            Desc = $"学术描述性角标“{word}”格式不规范。按照学术标准，表示物理意义的角标（如 gap 缩写 g，Bohr 缩写 B）必须设为【正体下标】（如 $E_\\mathrm{{g}}$、$k_\\mathrm{{B}}$），而非斜体或普通字符。",
-                            Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                        });
+                        AddIssue(doc, text, issues, "DescriptiveSubscript", match.Index, match.Length, word, word,
+                            $"学术描述性角标“{word}”格式不规范。按照学术标准，表示物理意义的角标（如 gap 缩写 g，Bohr 缩写 B）必须设为【正体下标】（如 $E_\\mathrm{{g}}$、$k_\\mathrm{{B}}$），而非斜体或普通字符。");
                     }
                 }
             }
@@ -170,12 +124,6 @@ namespace Manuscript_guide.Scanners
                 foreach (Match match in latexRegex.Matches(text))
                 {
                     string origText = match.Value;
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
                     // Extract recommendation
                     string cleanText = origText.Replace("_", "").Replace("^", "").Replace("{", "").Replace("}", "");
                     string formatType = origText.Contains("_") ? "chemical" : "unit";
@@ -186,18 +134,8 @@ namespace Manuscript_guide.Scanners
                         formatType = "desc";
                     }
 
-                    issues.Add(new IssueItem
-                    {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "LaTeXStyleClean",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = origText,
-                        RecommendFix = cleanText,
-                        Desc = $"检测到 LaTeX 风格的行内上下标表达式“{origText}”。建议去除下划线或上标符，并在 Word 中自动应用原生的上下标排版属性。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                    AddIssue(doc, text, issues, "LaTeXStyleClean", match.Index, match.Length, origText, cleanText,
+                        $"检测到 LaTeX 风格的行内上下标表达式“{origText}”。建议去除下划线或上标符，并在 Word 中自动应用原生的上下标排版属性。");
                 }
             }
 
@@ -274,6 +212,24 @@ namespace Manuscript_guide.Scanners
             }
 
             return false;
+        }
+
+        private void AddIssue(Document doc, string text, List<IssueItem> issues, string subtype, int start, int length, string originalText, string recommendFix, string description)
+        {
+            IssueItem issue = IssueMatchFactory.Create(
+                doc,
+                text,
+                ModuleType,
+                subtype,
+                start,
+                length,
+                originalText,
+                recommendFix,
+                description);
+            if (issue != null)
+            {
+                issues.Add(issue);
+            }
         }
     }
 }

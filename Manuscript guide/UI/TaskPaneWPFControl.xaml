@@ -92,7 +92,8 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Margin="0,0,0,12" Background="#FFFFFF" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="6" Padding="14" SnapsToDevicePixels="True"
-                                        Visibility="{Binding CardVisibility}">
+                                        Visibility="{Binding CardVisibility}" Cursor="Hand" MouseLeftButtonUp="IssueCard_MouseLeftButtonUp"
+                                        ToolTip="点击卡片任意空白区域可跳转到原文位置。">
                                     <!-- Dynamic Left Border indicator based on issue category -->
                                     <Border.Style>
                                         <Style TargetType="Border">

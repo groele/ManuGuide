@@ -46,9 +46,9 @@ namespace Manuscript_guide.Services
         }
 
         // Creates a native bookmark for an issue range
-        public string CreateBookmark(Document doc, string issueId, Range range, string moduleType = null)
+        public string CreateBookmark(Document doc, string issueId, Range range, string moduleType = null, bool allowProtected = false)
         {
-            if (ProtectedRangeService.IsRangeProtected(range))
+            if (!allowProtected && ProtectedRangeService.IsRangeProtected(range))
             {
                 return null;
             }

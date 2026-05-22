@@ -14,13 +14,15 @@ namespace Manuscript_guide.Services
         private DocumentScanContext(Document doc)
         {
             Document = doc;
-            Text = doc == null ? string.Empty : doc.Content.Text;
-            ProtectedRanges = ProtectedRangeService.GetProtectedRanges(doc);
+            RawText = doc == null ? string.Empty : doc.Content.Text;
+            ProtectedRanges = ProtectedRangeService.GetProtectedRanges(doc, RawText);
+            Text = ProtectedRangeService.MaskProtectedText(RawText, ProtectedRanges);
             previous = current;
             current = this;
         }
 
         public Document Document { get; private set; }
+        public string RawText { get; private set; }
         public string Text { get; private set; }
         public List<ProtectedTextRange> ProtectedRanges { get; private set; }
 

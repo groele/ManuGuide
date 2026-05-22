@@ -32,24 +32,20 @@ namespace Manuscript_guide.Scanners
 
                     string recommend = match.Groups[1].Value + " " + recommendVerb;
 
-                    Range r = doc.Range(match.Index, match.Index + match.Length);
-                    string issueId = Guid.NewGuid().ToString();
-
-                    CorrectionTracker.Instance.CreateBookmark(doc, issueId, r, ModuleType);
-                    ShadingManager.ApplyActiveShading(r, ModuleType);
-
-                    issues.Add(new IssueItem
+                    IssueItem issue = IssueMatchFactory.Create(
+                        doc,
+                        text,
+                        ModuleType,
+                        "DataPluralAgreement",
+                        match.Index,
+                        match.Length,
+                        origText,
+                        recommend,
+                        $"名词“data”在科技论文中属于复数名词，其搭配的单数谓语动词“{match.Groups[2].Value}”应规范改写为复数形式“{recommendVerb}”。");
+                    if (issue != null)
                     {
-                        IssueId = issueId,
-                        Type = ModuleType,
-                        Subtype = "DataPluralAgreement",
-                        Start = match.Index,
-                        End = match.Index + match.Length,
-                        OriginalText = origText,
-                        RecommendFix = recommend,
-                        Desc = $"名词“data”在科技论文中属于复数名词，其搭配的单数谓语动词“{match.Groups[2].Value}”应规范改写为复数形式“{recommendVerb}”。",
-                        Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                    });
+                        issues.Add(issue);
+                    }
                 }
             }
 
@@ -84,24 +80,20 @@ namespace Manuscript_guide.Scanners
             foreach (Match match in r.Matches(text))
             {
                 string origText = match.Value;
-                Range range = doc.Range(match.Index, match.Index + match.Length);
-                string issueId = Guid.NewGuid().ToString();
-
-                CorrectionTracker.Instance.CreateBookmark(doc, issueId, range, ModuleType);
-                ShadingManager.ApplyActiveShading(range, ModuleType);
-
-                issues.Add(new IssueItem
+                IssueItem issue = IssueMatchFactory.Create(
+                    doc,
+                    text,
+                    ModuleType,
+                    subtype,
+                    match.Index,
+                    match.Length,
+                    origText,
+                    replacement,
+                    desc);
+                if (issue != null)
                 {
-                    IssueId = issueId,
-                    Type = ModuleType,
-                    Subtype = subtype,
-                    Start = match.Index,
-                    End = match.Index + match.Length,
-                    OriginalText = origText,
-                    RecommendFix = replacement,
-                    Desc = desc,
-                    Context = PunctuationScanner.GetContextSnippet(text, match.Index, match.Length)
-                });
+                    issues.Add(issue);
+                }
             }
         }
     }

@@ -30,6 +30,8 @@ namespace Manuscript_guide.Services
         private static readonly List<DiagnosticRuleDefinition> Rules = new List<DiagnosticRuleDefinition>
         {
             new DiagnosticRuleDefinition("global", "filter_references_and_citations", "过滤引用与参考文献区域", "优先保护 Zotero、EndNote、Mendeley 等引用软件生成的 Word Field，再用 References/Bibliography/参考文献标题兜底。开启后，检测、标记、替换、修复、清理和格式规范化都不会作用于这些区域。"),
+            new DiagnosticRuleDefinition("global", "skip_latex_formula_regions", "跳过 LaTeX 公式模块", "在所有检测、标记、替换和改写功能中跳过 LaTeX 公式、Word 原生公式对象和 MathType 公式对象，避免误改公式内容并提升长文档处理速度。"),
+            new DiagnosticRuleDefinition("global", "mark_skipped_formula_regions", "标记已跳过的 LaTeX 公式区域", "使用插件专属高亮标记被保护的公式区域，便于检查；清除插件标记时可一键移除，不影响用户手动高亮。", false),
             new DiagnosticRuleDefinition("global", "preserve_user_highlights", "清除时保护用户手动标记", "执行清除插件痕迹时，只清除带有 Manuscript Guide 私有标识的书签、批注和底纹，不清理用户手动添加的高亮或批注。"),
             new DiagnosticRuleDefinition("global", "auto_backup_before_bulk_fix", "一键修复前自动备份", "执行一键修复前，在原文档目录生成时间戳备份，降低批量修改带来的误改风险。"),
 
