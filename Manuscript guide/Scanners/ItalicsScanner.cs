@@ -22,8 +22,8 @@ namespace Manuscript_guide.Scanners
             @"\b(sin|cos|tan|exp|log|ln|lim|max|min|det)\b(?=\s*[\(\[])",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static readonly Regex SingleLetterRegex = new Regex(
-            @"\b([A-Za-z])\b",
+        private static readonly Regex SingleLetterTokenRegex = new Regex(
+            @"(?<![A-Za-z0-9_])([A-Za-z])(?![A-Za-z0-9_])",
             RegexOptions.Compiled);
 
         private static readonly HashSet<string> EnglishSingleWords = new HashSet<string>(StringComparer.Ordinal)
@@ -77,7 +77,12 @@ namespace Manuscript_guide.Scanners
         {
             foreach (Match match in regex.Matches(documentText))
             {
-                Range targetRange = doc.Range(match.Index, match.Index + match.Length);
+                Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, match.Value);
+                if (targetRange == null)
+                {
+                    continue;
+                }
+
                 if (ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic != 1)
                 {
                     continue;
@@ -134,20 +139,27 @@ namespace Manuscript_guide.Scanners
         private void AddVariableItalicIssues(Document doc, string documentText, List<IssueItem> issues)
         {
             int count = 0;
-            foreach (Match match in SingleLetterRegex.Matches(documentText))
+            foreach (Match match in SingleLetterTokenRegex.Matches(documentText))
             {
                 string text = match.Groups[1].Value;
+                int tokenIndex = match.Groups[1].Index;
                 if (EnglishSingleWords.Contains(text) || !CandidateVariables.Contains(text[0]))
                 {
                     continue;
                 }
 
-                if (!LooksLikeVariableContext(documentText, match.Index, text[0]))
+                if (!IsStandaloneVariableToken(documentText, tokenIndex) ||
+                    !LooksLikeVariableContext(documentText, tokenIndex, text[0]))
                 {
                     continue;
                 }
 
-                Range targetRange = doc.Range(match.Index, match.Index + match.Length);
+                Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, tokenIndex, text.Length, text);
+                if (targetRange == null)
+                {
+                    continue;
+                }
+
                 if (ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic == 1)
                 {
                     continue;
@@ -190,28 +202,45 @@ namespace Manuscript_guide.Scanners
             return false;
         }
 
-        private void AddIssue(Document doc, string documentText, Range targetRange, string subtype, string originalText, string recommendFix, string desc, List<IssueItem> issues)
+        private static bool IsStandaloneVariableToken(string text, int index)
         {
-            string issueId = Guid.NewGuid().ToString();
-            string bookmarkName = CorrectionTracker.Instance.CreateBookmark(doc, issueId, targetRange, ModuleType);
-            if (string.IsNullOrEmpty(bookmarkName))
+            char before = index > 0 ? text[index - 1] : '\0';
+            char after = index + 1 < text.Length ? text[index + 1] : '\0';
+
+            if (IsWordTokenChar(before) || IsWordTokenChar(after))
             {
-                return;
+                return false;
             }
 
-            ShadingManager.ApplyActiveShading(targetRange, ModuleType);
-            issues.Add(new IssueItem
+            if ((before == '-' && index > 1 && char.IsLetterOrDigit(text[index - 2])) ||
+                (after == '-' && index + 2 < text.Length && char.IsLetterOrDigit(text[index + 2])))
             {
-                IssueId = issueId,
-                Type = ModuleType,
-                Subtype = subtype,
-                Start = targetRange.Start,
-                End = targetRange.End,
-                OriginalText = originalText,
-                RecommendFix = recommendFix,
-                Desc = desc,
-                Context = PunctuationScanner.GetContextSnippet(documentText, targetRange.Start, Math.Max(1, targetRange.End - targetRange.Start))
-            });
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsWordTokenChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_';
+        }
+
+        private void AddIssue(Document doc, string documentText, Range targetRange, string subtype, string originalText, string recommendFix, string desc, List<IssueItem> issues)
+        {
+            IssueItem issue = IssueMatchFactory.CreateFromRange(
+                doc,
+                documentText,
+                ModuleType,
+                subtype,
+                targetRange,
+                originalText,
+                recommendFix,
+                desc);
+            if (issue != null)
+            {
+                issues.Add(issue);
+            }
         }
     }
 }

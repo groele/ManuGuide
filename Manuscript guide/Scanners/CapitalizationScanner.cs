@@ -95,7 +95,9 @@ namespace Manuscript_guide.Scanners
             Regex acronymRegex = new Regex(@"\b[A-Z]{2,6}\b");
             HashSet<string> commonShortWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "THE", "AND", "FOR", "BUT", "NOT", "YES", "WHO", "YOU", "ITS", "HAS", "HAD", "WAS", "ARE"
+                "THE", "AND", "FOR", "BUT", "NOT", "YES", "WHO", "YOU", "ITS", "HAS", "HAD", "WAS", "ARE",
+                "SI", "DOI", "URL", "PDF", "XML", "HTML", "CSV", "AFM", "SEM", "TEM", "XRD", "XPS",
+                "PL", "DFT", "DOS", "PDOS", "FET", "LED", "OLED", "TMD", "TMDC"
             };
 
             // Keep track of the first usage of each acronym
@@ -108,6 +110,7 @@ namespace Manuscript_guide.Scanners
 
                 // Filter out standard Roman numerals (I, II, III, IV, VI, VII, VIII, IX, X, etc.)
                 if (IsRomanNumeral(acronym)) continue;
+                if (LooksLikeMaterialOrUnitToken(acronym)) continue;
 
                 if (!firstUsagePositions.ContainsKey(acronym))
                 {
@@ -258,6 +261,21 @@ namespace Manuscript_guide.Scanners
             return Regex.IsMatch(text, @"^(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV)$", RegexOptions.IgnoreCase);
         }
 
+        private bool LooksLikeMaterialOrUnitToken(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            if (Regex.IsMatch(text, @"^(K|V|A|W|Hz|GHz|MHz|THz|eV|meV|keV|nm|um|cm|mm|Pa|GPa|MPa|mol|M)$", RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+
+            return Regex.IsMatch(text, @"^(MoS|WS|WSe|MoSe|hBN|SiO|AlO|TiO|ITO|FTO)\d*$", RegexOptions.IgnoreCase);
+        }
+
         private static readonly HashSet<string> LockedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "e", "E", "f", "F", "p", "P", "v", "V", "t", "T", "c", "C", "q", "Q", "k", "K", "a", "A", "d", "D", "h", "H", "m", "M", "n", "N", "r", "R", "s", "S", "x", "X", "y", "Y", "z", "Z",
@@ -267,7 +285,7 @@ namespace Manuscript_guide.Scanners
         private void AnalyzeCrossRefCapitalizationFlow(Document doc, string text, List<IssueItem> issues)
         {
             // Match pattern like "figure 1", "fig. 2", "table 3", "eq 4", "equation 5", "ref 6", "reference 7", etc.
-            Regex crossRefRegex = new Regex(@"\b(figure|table|fig|eq|equation|ref|reference)(\.?\s+)(\d+|\b[A-Z]\b)", RegexOptions.IgnoreCase);
+            Regex crossRefRegex = new Regex(@"\b(fig\.|figure|table|eq\.|equation|ref\.)(\s+)(\d+[A-Za-z]?|[A-Z])\b", RegexOptions.IgnoreCase);
             foreach (Match match in crossRefRegex.Matches(text))
             {
                 string word = match.Groups[1].Value;

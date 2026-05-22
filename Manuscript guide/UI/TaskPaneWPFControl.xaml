@@ -74,7 +74,7 @@
                                     <TextBlock x:Name="txtErrCount" Text="0" FontWeight="Bold" FontSize="12" Foreground="#E03B2B"/>
                                     <TextBlock Text=" 处" FontSize="12" Foreground="#605E5C"/>
                                 </StackPanel>
-                                <Button x:Name="btnFixAllModule" Content="一键修复本模块" Background="#0078D4" Foreground="#FFFFFF" BorderThickness="0" Padding="14,6" FontSize="12" FontWeight="SemiBold" Cursor="Hand" HorizontalAlignment="Right" Click="FixAllModule_Click" ToolTip="批量接受当前模块中可自动修复的问题。修改后会保留淡色底纹和 Word 批注，方便复核。">
+                                <Button x:Name="btnFixAllModule" Content="一键修复本模块" Background="#0078D4" Foreground="#FFFFFF" BorderThickness="0" Padding="14,6" FontSize="12" FontWeight="SemiBold" Cursor="Hand" HorizontalAlignment="Right" Click="FixAllModule_Click" ToolTip="批量接受当前模块中可自动修复的问题。修改后只保留淡色底纹留痕，可在侧边栏复核。">
                                     <Button.Resources>
                                         <Style TargetType="Border">
                                             <Setter Property="CornerRadius" Value="4"/>
@@ -148,6 +148,15 @@
                                             <Border Background="#F9FBF9" BorderBrush="#EDEBE9" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                                                 <TextBlock Text="{Binding Context}" FontSize="12" TextWrapping="Wrap" Foreground="#323130" LineHeight="18"/>
                                             </Border>
+
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="命中：" FontSize="10" FontWeight="SemiBold" Foreground="#8A8886" VerticalAlignment="Top"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding OriginalText}" FontSize="11" Foreground="#323130" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
 
                                             <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="#605E5C" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,10"/>
 

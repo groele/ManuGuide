@@ -124,7 +124,9 @@ namespace Manuscript_guide.Services
                     continue;
                 }
 
-                if (!IntersectsAny(protectedRanges, issue.Start, issue.End))
+                int start = DocumentScanContext.TextOffsetToDocumentPosition(doc, issue.Start);
+                int end = DocumentScanContext.TextOffsetToDocumentPosition(doc, issue.End);
+                if (!IntersectsAny(protectedRanges, start, end))
                 {
                     filtered.Add(issue);
                 }
@@ -201,6 +203,11 @@ namespace Manuscript_guide.Services
 
         public static string MaskProtectedText(string text, List<ProtectedTextRange> ranges)
         {
+            return MaskProtectedText(text, ranges, 0);
+        }
+
+        public static string MaskProtectedText(string text, List<ProtectedTextRange> ranges, int contentStart)
+        {
             if (string.IsNullOrEmpty(text) || ranges == null || ranges.Count == 0)
             {
                 return text ?? string.Empty;
@@ -209,8 +216,8 @@ namespace Manuscript_guide.Services
             char[] chars = text.ToCharArray();
             foreach (ProtectedTextRange range in ranges)
             {
-                int start = Math.Max(0, Math.Min(chars.Length, range.Start));
-                int end = Math.Max(start, Math.Min(chars.Length, range.End));
+                int start = Math.Max(0, Math.Min(chars.Length, range.Start - contentStart));
+                int end = Math.Max(start, Math.Min(chars.Length, range.End - contentStart));
                 for (int i = start; i < end; i++)
                 {
                     if (chars[i] != '\r' && chars[i] != '\n')
@@ -269,7 +276,7 @@ namespace Manuscript_guide.Services
                 AddFormulaFieldRanges(doc, ranges);
                 AddWordEquationRanges(doc, ranges);
                 AddMathTypeRanges(doc, ranges);
-                AddLatexTextRanges(documentText, ranges);
+                AddLatexTextRanges(doc, documentText, ranges);
             }
             if (IsReferenceProtectionEnabled())
             {
@@ -353,19 +360,20 @@ namespace Manuscript_guide.Services
             }
         }
 
-        private static void AddLatexTextRanges(string documentText, List<ProtectedTextRange> ranges)
+        private static void AddLatexTextRanges(Document doc, string documentText, List<ProtectedTextRange> ranges)
         {
             if (string.IsNullOrEmpty(documentText))
             {
                 return;
             }
 
+            int contentStart = DocumentScanContext.GetContentStart(doc);
             foreach (Match match in LatexBlockRegex.Matches(documentText))
             {
                 ranges.Add(new ProtectedTextRange
                 {
-                    Start = match.Index,
-                    End = match.Index + match.Length,
+                    Start = contentStart + match.Index,
+                    End = contentStart + match.Index + match.Length,
                     Source = "latex-block"
                 });
             }
@@ -374,8 +382,8 @@ namespace Manuscript_guide.Services
             {
                 ranges.Add(new ProtectedTextRange
                 {
-                    Start = match.Index,
-                    End = match.Index + match.Length,
+                    Start = contentStart + match.Index,
+                    End = contentStart + match.Index + match.Length,
                     Source = "latex-inline"
                 });
             }

@@ -56,6 +56,11 @@ namespace Manuscript_guide.Services
 
         public Action<Word.Range> CreateAction(IssueItem issue, Word.Document doc)
         {
+            if (issue.Subtype == "UnicodeSubscript" && !SettingsManager.Current.UseNativeSubscript)
+            {
+                return null;
+            }
+
             string formatType = ResolveFormatType(issue);
             return (newRange) =>
             {

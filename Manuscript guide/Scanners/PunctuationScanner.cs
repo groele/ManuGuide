@@ -113,13 +113,12 @@ namespace Manuscript_guide.Scanners
                             string preText = preRange.Text;
                             if (!string.IsNullOrEmpty(preText) && Regex.IsMatch(preText, @"[a-zA-Z0-9]"))
                             {
-                                IssueItem issue = IssueMatchFactory.Create(
+                                IssueItem issue = IssueMatchFactory.CreateFromRange(
                                     doc,
                                     text,
                                     ModuleType,
                                     "EquationSpacing",
-                                    start - 1,
-                                    1,
+                                    preRange,
                                     preText,
                                     preText + " ",
                                     "公式域与前文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
@@ -139,13 +138,12 @@ namespace Manuscript_guide.Scanners
                             // Missing space after formula when followed by an alphanumeric character
                             if (checkEquationSpacing && !string.IsNullOrEmpty(postText) && Regex.IsMatch(postText, @"[a-zA-Z0-9]"))
                             {
-                                IssueItem issue = IssueMatchFactory.Create(
+                                IssueItem issue = IssueMatchFactory.CreateFromRange(
                                     doc,
                                     text,
                                     ModuleType,
                                     "EquationSpacing",
-                                    end,
-                                    1,
+                                    postRange,
                                     postText,
                                     " " + postText,
                                     "公式域与后文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
@@ -162,13 +160,12 @@ namespace Manuscript_guide.Scanners
                                 string lastChar = lastCharRange.Text;
                                 if (!string.IsNullOrEmpty(lastChar) && !Regex.IsMatch(lastChar, @"[,.;:?!，。；：？！]"))
                                 {
-                                    IssueItem issue = IssueMatchFactory.Create(
+                                    IssueItem issue = IssueMatchFactory.CreateFromRange(
                                         doc,
                                         text,
                                         ModuleType,
                                         "EquationPunctuation",
-                                        end - 1,
-                                        1,
+                                        lastCharRange,
                                         lastChar,
                                         lastChar + ".",
                                         "行内或独立公式作为句子结尾，末尾遗漏了标点符号（如句点“.”或逗号“,”），请检查并规范。");
@@ -240,7 +237,7 @@ namespace Manuscript_guide.Scanners
             int start = Math.Max(0, index - 30);
             int end = Math.Min(text.Length, index + 31);
             string window = text.Substring(start, end - start);
-            return Regex.IsMatch(window, @"(https?://|www\.|@\w|[\w.-]+\.[A-Za-z]{2,})", RegexOptions.IgnoreCase);
+            return Regex.IsMatch(window, @"(https?://|www\.|doi\s*:|10\.\d{4,9}/|@\w|[\w.-]+\.[A-Za-z]{2,})", RegexOptions.IgnoreCase);
         }
 
         public static string GetContextSnippet(string text, int index, int length)

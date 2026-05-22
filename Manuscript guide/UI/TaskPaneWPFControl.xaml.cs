@@ -73,7 +73,7 @@ namespace Manuscript_guide.UI
                         currentIssues.Clear();
                         itemsIssueList.ItemsSource = null;
                         txtErrCount.Text = "0";
-                        txtFooterStatus.Text = "插件标记、留痕、书签与批注已全部清除。";
+                        txtFooterStatus.Text = "插件标记、留痕与书签已全部清除；旧版本遗留审阅项也会一并移除。";
                         ShowPanel("overview");
                     }
 
@@ -150,6 +150,7 @@ namespace Manuscript_guide.UI
 
             try
             {
+                ScannerStatsSnapshot stats = null;
                 RunWithWordUiPaused(() =>
                 {
                     using (DocumentScanContext.Begin(doc))
@@ -171,6 +172,7 @@ namespace Manuscript_guide.UI
                         // Run scan in Word document
                         List<IssueItem> issues = IssueMetadataService.EnrichAll(scanner.Scan(doc));
                         currentIssues = ProtectedRangeService.FilterIssues(doc, issues);
+                        stats = DocumentScanContext.GetStatsSnapshot(moduleType);
                     }
                 });
 
@@ -179,7 +181,7 @@ namespace Manuscript_guide.UI
                 emptyScanState.Visibility = currentIssues.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
                 progressAudit.Value = 100;
-                txtFooterStatus.Text = $"扫描完成，发现 {currentIssues.Count} 处排版建议。";
+                txtFooterStatus.Text = "扫描完成，" + BuildScanStatusText(stats, currentIssues.Count);
 
                 PopulateModuleConfigPanel(moduleType);
                 ShowToast($"“{DiagnosticModuleRegistry.GetDisplayName(moduleType)}”扫描完成！");
@@ -221,6 +223,7 @@ namespace Manuscript_guide.UI
 
             try
             {
+                ScannerStatsSnapshot stats = null;
                 RunWithWordUiPaused(() =>
                 {
                     using (DocumentScanContext.Begin(doc))
@@ -248,6 +251,7 @@ namespace Manuscript_guide.UI
                         }
 
                         currentIssues = allIssues;
+                        stats = DocumentScanContext.GetStatsSnapshot("all");
                     }
                 });
 
@@ -256,7 +260,7 @@ namespace Manuscript_guide.UI
                 emptyScanState.Visibility = currentIssues.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
                 progressAudit.Value = 100;
-                txtFooterStatus.Text = $"全部专项检测完成，发现 {currentIssues.Count} 处排版建议。";
+                txtFooterStatus.Text = "全部专项检测完成，" + BuildScanStatusText(stats, currentIssues.Count);
                 PopulateModuleConfigPanel("all");
                 ShowToast($"一键检测完成，共发现 {currentIssues.Count} 处建议。");
                 return true;
@@ -385,7 +389,7 @@ namespace Manuscript_guide.UI
 
                 issue.IsFixed = true;
                 UpdatePendingCount();
-                ShowToast("已应用修改，并保留淡色底纹与 Word 批注。");
+                ShowToast("已应用修改，并保留淡色底纹留痕。");
             }
             catch (Exception ex)
             {
@@ -541,6 +545,16 @@ namespace Manuscript_guide.UI
             }
         }
 
+        private string BuildScanStatusText(ScannerStatsSnapshot stats, int issueCount)
+        {
+            if (stats == null)
+            {
+                return $"发现 {issueCount} 处排版建议。";
+            }
+
+            return stats.ToStatusText(issueCount);
+        }
+
         private void IssueCard_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             DependencyObject source = e.OriginalSource as DependencyObject;
@@ -574,7 +588,7 @@ namespace Manuscript_guide.UI
                 }
                 else if (issue.Start >= 0 && issue.End > issue.Start && issue.End <= doc.Content.End)
                 {
-                    range = doc.Range(issue.Start, issue.End);
+                    range = DocumentScanContext.CreateRangeFromTextSpan(doc, issue.Start, issue.End - issue.Start);
                 }
 
                 if (range == null)

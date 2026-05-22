@@ -48,7 +48,7 @@ namespace Manuscript_guide
             btnDetectAll.SuperTip = "连续运行全部专项检测，只生成问题队列和高亮标记，不直接修改正文。\n适合先审阅修改前/建议修改后的差异，再逐条接受。";
 
             btnFixAll.ScreenTip = "一键修复";
-            btnFixAll.SuperTip = "先运行全部专项检测，再批量应用可修复建议，并保留淡色底纹和 Word 批注。\n修改前后会留在侧边栏和文档批注中，便于复核。";
+            btnFixAll.SuperTip = "先运行全部专项检测，再批量应用可修复建议，并保留淡色底纹作为插件留痕。\n修改前后可在侧边栏复核。";
 
             btnClear.ScreenTip = "清除标记";
             btnClear.SuperTip = "清除插件生成的诊断底纹和标记。\n是否保留用户手动高亮，取决于“高级设置”中的安全选项。";

@@ -163,31 +163,14 @@ namespace Manuscript_guide.Services
 
                 // Apply formatting (e.g. subscript formatting or variable uprighting)
                 customFormatAction?.Invoke(newRange);
-                string finalText = newRange.Text;
-
-                // Keep visible review traces: faded shading plus a native Word comment.
+                // Keep a lightweight visible review trace without entering Word comment mode.
                 ShadingManager.ApplyFadedShading(newRange, moduleType);
-                AddReviewComment(doc, newRange, moduleType, originalText, finalText);
                 return true;
             }
             catch (Exception)
             {
                 // Safety guard for Word Interop thread exceptions
                 return false;
-            }
-        }
-
-        private void AddReviewComment(Document doc, Range range, string moduleType, string originalText, string newText)
-        {
-            try
-            {
-                string commentText =
-                    $"Manuscript Guide [{moduleType}]: 已应用建议修改。原文: {originalText} -> 修改: {newText}";
-                doc.Comments.Add(range, commentText);
-            }
-            catch
-            {
-                // Some protected or compatibility documents reject comments; shading remains the fallback trace.
             }
         }
 

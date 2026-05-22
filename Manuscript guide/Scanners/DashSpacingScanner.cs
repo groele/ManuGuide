@@ -27,6 +27,13 @@ namespace Manuscript_guide.Scanners
                 foreach (Match match in cjkToLatin.Matches(text))
                 {
                     string matched = match.Value;
+                    if (ShouldSkipMixedSpacing(text, match.Index, match.Length))
+                    {
+                        DocumentScanContext.RecordCandidate(ModuleType, "CJKLatinSpacing");
+                        DocumentScanContext.RecordSkip(ModuleType, "CJKLatinSpacing", ScannerSkipReason.RuleFilter);
+                        continue;
+                    }
+
                     IssueItem issue = IssueMatchFactory.Create(
                         doc,
                         text,
@@ -51,6 +58,13 @@ namespace Manuscript_guide.Scanners
                 foreach (Match match in latinToCjk.Matches(text))
                 {
                     string matched = match.Value;
+                    if (ShouldSkipMixedSpacing(text, match.Index, match.Length))
+                    {
+                        DocumentScanContext.RecordCandidate(ModuleType, "LatinCJKSpacing");
+                        DocumentScanContext.RecordSkip(ModuleType, "LatinCJKSpacing", ScannerSkipReason.RuleFilter);
+                        continue;
+                    }
+
                     IssueItem issue = IssueMatchFactory.Create(
                         doc,
                         text,
@@ -106,6 +120,14 @@ namespace Manuscript_guide.Scanners
             }
 
             return issues;
+        }
+
+        private static bool ShouldSkipMixedSpacing(string text, int index, int length)
+        {
+            int start = Math.Max(0, index - 20);
+            int end = Math.Min(text.Length, index + length + 20);
+            string window = text.Substring(start, end - start);
+            return Regex.IsMatch(window, @"(https?://|www\.|doi\s*:|10\.\d{4,9}/|[A-Z][a-z]?\d+[A-Za-z]*|[A-Za-z]*\d+[A-Z][a-z]?|sample\s*[A-Z]?\d+|Fig\.?\s*\d+|Table\s*\d+)", RegexOptions.IgnoreCase);
         }
     }
 }

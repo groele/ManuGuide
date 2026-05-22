@@ -11,6 +11,46 @@ namespace Manuscript_guide.Scanners
     {
         public string ModuleType => "word";
 
+        private sealed class PhraseRule
+        {
+            public PhraseRule(string settingKey, string subtype, string pattern, string replacement, string description)
+            {
+                SettingKey = settingKey;
+                Subtype = subtype;
+                Pattern = pattern;
+                Replacement = replacement;
+                Description = description;
+            }
+
+            public string SettingKey { get; private set; }
+            public string Subtype { get; private set; }
+            public string Pattern { get; private set; }
+            public string Replacement { get; private set; }
+            public string Description { get; private set; }
+        }
+
+        private static readonly List<PhraseRule> PhraseRules = new List<PhraseRule>
+        {
+            new PhraseRule(
+                "redundant_in_order_to",
+                "RedundantInOrderTo",
+                @"\bin\s+order\s+to\b",
+                "to",
+                "冗余的学术连词。建议精简为简洁明了的“to”以提高句子的可读性。"),
+            new PhraseRule(
+                "redundant_as_is_shown",
+                "RedundantAsIsShown",
+                @"\bas\s+is\s+shown\s+in\b",
+                "as shown in",
+                "啰嗦的学术句式。在学术写作中推荐使用更精炼的“as shown in Fig.”等结构。"),
+            new PhraseRule(
+                "chinglish_companion_syntax",
+                "ChinglishCompanionSyntax",
+                @"\bwith\s+the\s+increase\s+of\b",
+                "with increasing (or: as temperature increases)",
+                "典型的中式伴随状语。在学术英语中，推荐使用“with increasing [variable]”或“as [variable] increases”等动态连贯表达。")
+        };
+
         public List<IssueItem> Scan(Document doc)
         {
             List<IssueItem> issues = new List<IssueItem>();
@@ -49,26 +89,12 @@ namespace Manuscript_guide.Scanners
                 }
             }
 
-            // 2. Redundancy / Wordy Phrases
-            // "in order to" -> "to"
-            if (SettingsManager.IsRuleEnabled(ModuleType, "redundant_in_order_to"))
+            foreach (PhraseRule rule in PhraseRules)
             {
-                MatchWordyPhrase(text, @"\bin\s+order\s+to\b", "to", "RedundantInOrderTo",
-                    "冗余的学术连词。建议精简为简洁明了的“to”以提高句子的可读性。", doc, issues);
-            }
-
-            // "as is shown in" -> "as shown in"
-            if (SettingsManager.IsRuleEnabled(ModuleType, "redundant_as_is_shown"))
-            {
-                MatchWordyPhrase(text, @"\bas\s+is\s+shown\s+in\b", "as shown in", "RedundantAsIsShown",
-                    "啰嗦的学术句式。在学术写作中推荐使用更精炼的“as shown in Fig.”等结构。", doc, issues);
-            }
-
-            // 3. Companion Syntax (Chinglish): "with the increase of" -> "with increasing"
-            if (SettingsManager.IsRuleEnabled(ModuleType, "chinglish_companion_syntax"))
-            {
-                MatchWordyPhrase(text, @"\bwith\s+the\s+increase\s+of\b", "with increasing (or: as temperature increases)", "ChinglishCompanionSyntax",
-                    "典型的中式伴随状语。在学术英语中，推荐使用“with increasing [variable]”或“as [variable] increases”等动态连贯表达。", doc, issues);
+                if (SettingsManager.IsRuleEnabled(ModuleType, rule.SettingKey))
+                {
+                    MatchWordyPhrase(text, rule.Pattern, rule.Replacement, rule.Subtype, rule.Description, doc, issues);
+                }
             }
 
             return issues;

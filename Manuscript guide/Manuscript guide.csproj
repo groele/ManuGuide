@@ -215,9 +215,7 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
-    <Compile Include="Ribbon1.cs">
-      <SubType>Component</SubType>
-    </Compile>
+    <Compile Include="Ribbon1.cs" />
     <Compile Include="Ribbon1.Designer.cs">
       <DependentUpon>Ribbon1.cs</DependentUpon>
     </Compile>
@@ -231,6 +229,8 @@
     <Compile Include="Services\DocumentScanContext.cs" />
     <Compile Include="Services\IssueMetadataService.cs" />
     <Compile Include="Services\ProtectedRangeService.cs" />
+    <Compile Include="Services\ScannerRuleStats.cs" />
+    <Compile Include="Services\ScannerTestCorpus.cs" />
     <Compile Include="Services\CorrectionActionResolver.cs" />
     <Compile Include="Services\SettingsManager.cs" />
     <Compile Include="Services\ShadingManager.cs" />
@@ -238,6 +238,7 @@
     <Compile Include="Services\SubscriptFormatter.cs" />
     <Compile Include="Scanners\ISpecializedScanner.cs" />
     <Compile Include="Scanners\IssueMatchFactory.cs" />
+    <Compile Include="Scanners\ScannerRuleRunner.cs" />
     <Compile Include="Scanners\PunctuationScanner.cs" />
     <Compile Include="Scanners\CapitalizationScanner.cs" />
     <Compile Include="Scanners\DashSpacingScanner.cs" />

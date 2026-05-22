@@ -11,6 +11,26 @@ namespace Manuscript_guide.Scanners
     {
         public string ModuleType => "data";
 
+        private static readonly Regex UnitSpacingRegex = new Regex(
+            @"\b(\d+(?:\.\d+)?)\s*(K|nm|µm|um|pm|mA|A|GHz|MHz|kHz|Hz|cm|mm|m|eV|meV|keV|V|Pa|GPa|MPa|s|min|h|kg|g|mg|mW|W|MW|dB|mol|M)\b",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ScientificRegex = new Regex(
+            @"(\d+(?:\.\d+)?)\s*[xX*×]\s*10\s*(\^?\{?[-+]?\d+\}?|[⁺⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex FromRangeRegex = new Regex(
+            @"\bfrom\s+(-?\d+(?:\.\d+)?)\s*[-–—]\s*(-?\d+(?:\.\d+)?)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex RangeHyphenRegex = new Regex(
+            @"\b(-?\d+(?:\.\d+)?)\s*[-—]\s*(-?\d+(?:\.\d+)?)\b",
+            RegexOptions.Compiled);
+
+        private static readonly Regex NegativeNumberRegex = new Regex(
+            @"(?<=\s|^)-(\d+(\.\d+)?)\b",
+            RegexOptions.Compiled);
+
         public List<IssueItem> Scan(Document doc)
         {
             List<IssueItem> issues = new List<IssueItem>();
@@ -21,12 +41,11 @@ namespace Manuscript_guide.Scanners
             // Match digits followed immediately by unit (K, nm, mA, GHz, cm, eV, V, Hz, Pa, s, min, h, K, °C, % is excluded)
             if (SettingsManager.IsRuleEnabled(ModuleType, "value_unit_spacing"))
             {
-                Regex unitSpacingRegex = new Regex(@"\b(\d+(\.\d+)?)\s*(K|nm|nm|mA|GHz|cm|eV|V|Hz|Pa|m|s|min|kg|mW|MW|dB)\b");
-                foreach (Match match in unitSpacingRegex.Matches(text))
+                foreach (Match match in UnitSpacingRegex.Matches(text))
                 {
                     string origText = match.Value;
                     string value = match.Groups[1].Value;
-                    string unit = match.Groups[3].Value;
+                    string unit = match.Groups[2].Value;
 
                     // If there's no space between value and unit, flag it
                     if (!origText.Contains(" ") && !origText.Contains("\u00A0")) // check space or non-breaking space
@@ -52,12 +71,11 @@ namespace Manuscript_guide.Scanners
             // 2. Scientific Notation multiplier: e.g. 5.2x10^12 -> 5.2 × 10^12
             if (SettingsManager.IsRuleEnabled(ModuleType, "scientific_notation"))
             {
-                Regex scientificRegex = new Regex(@"(\d+(\.\d+)?)\s*[x*]\s*10\s*([\^⁺⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)");
-                foreach (Match match in scientificRegex.Matches(text))
+                foreach (Match match in ScientificRegex.Matches(text))
                 {
                     string origText = match.Value;
                     string baseVal = match.Groups[1].Value;
-                    string expMarker = match.Groups[3].Value;
+                    string expMarker = NormalizeExponent(match.Groups[2].Value);
 
                     IssueItem issue = IssueMatchFactory.Create(
                         doc,
@@ -79,9 +97,15 @@ namespace Manuscript_guide.Scanners
             // 3. Range representations: "from 10-300 K" -> "from 10 to 300 K"
             if (SettingsManager.IsRuleEnabled(ModuleType, "from_range_expression"))
             {
-                Regex fromRangeRegex = new Regex(@"\bfrom\s+(\d+)\s*[-–—]\s*(\d+)\b", RegexOptions.IgnoreCase);
-                foreach (Match match in fromRangeRegex.Matches(text))
+                foreach (Match match in FromRangeRegex.Matches(text))
                 {
+                    if (LooksLikeDatePageOrDoi(text, match.Index, match.Length))
+                    {
+                        DocumentScanContext.RecordCandidate(ModuleType, "RangeExpression");
+                        DocumentScanContext.RecordSkip(ModuleType, "RangeExpression", ScannerSkipReason.RuleFilter);
+                        continue;
+                    }
+
                     string origText = match.Value;
                     string val1 = match.Groups[1].Value;
                     string val2 = match.Groups[2].Value;
@@ -106,9 +130,15 @@ namespace Manuscript_guide.Scanners
             // 4. Standalone numerical range without "from": e.g. 10 - 300 K or 10-300K -> 10–300 K using En-dash without spaces
             if (SettingsManager.IsRuleEnabled(ModuleType, "range_endash"))
             {
-                Regex rangeHyphenRegex = new Regex(@"\b(\d+)\s*[-—]\s*(\d+)\b");
-                foreach (Match match in rangeHyphenRegex.Matches(text))
+                foreach (Match match in RangeHyphenRegex.Matches(text))
                 {
+                    if (LooksLikeDatePageOrDoi(text, match.Index, match.Length))
+                    {
+                        DocumentScanContext.RecordCandidate(ModuleType, "RangeEnDash");
+                        DocumentScanContext.RecordSkip(ModuleType, "RangeEnDash", ScannerSkipReason.RuleFilter);
+                        continue;
+                    }
+
                     // Skip if preceded by "from" (handled by previous regex)
                     int startIndex = match.Index;
                     if (startIndex >= 5)
@@ -171,9 +201,15 @@ namespace Manuscript_guide.Scanners
             // Standard minus sign U+2212 inside negative number values: e.g. -30 K -> −30 K
             if (SettingsManager.IsRuleEnabled(ModuleType, "negative_minus_sign"))
             {
-                Regex negativeNumberRegex = new Regex(@"(?<=\s|^)-(\d+(\.\d+)?)\b");
-                foreach (Match match in negativeNumberRegex.Matches(text))
+                foreach (Match match in NegativeNumberRegex.Matches(text))
                 {
+                    if (LooksLikeDatePageOrDoi(text, match.Index, match.Length))
+                    {
+                        DocumentScanContext.RecordCandidate(ModuleType, "NegativeMinusSign");
+                        DocumentScanContext.RecordSkip(ModuleType, "NegativeMinusSign", ScannerSkipReason.RuleFilter);
+                        continue;
+                    }
+
                     string origText = match.Value;
                     string val = match.Groups[1].Value;
 
@@ -195,6 +231,24 @@ namespace Manuscript_guide.Scanners
             }
 
             return issues;
+        }
+
+        private static string NormalizeExponent(string exponent)
+        {
+            if (string.IsNullOrEmpty(exponent))
+            {
+                return exponent;
+            }
+
+            return exponent.Trim().Trim('{', '}');
+        }
+
+        private static bool LooksLikeDatePageOrDoi(string text, int index, int length)
+        {
+            int start = Math.Max(0, index - 24);
+            int end = Math.Min(text.Length, index + length + 24);
+            string window = text.Substring(start, end - start);
+            return Regex.IsMatch(window, @"(doi\s*:|10\.\d{4,9}/|pp\.?\s*$|pages?\s*$|Fig\.?\s*$|Table\s*$|\b\d{4}\s*[-–—]\s*\d{1,2}\s*[-–—]\s*\d{1,2}\b|\b\d{1,2}\s*[-–—]\s*\d{1,2}\s*[-–—]\s*\d{2,4}\b)", RegexOptions.IgnoreCase);
         }
     }
 }

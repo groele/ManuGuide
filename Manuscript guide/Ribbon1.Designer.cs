@@ -190,7 +190,7 @@ namespace Manuscript_guide
             this.btnFixAll.OfficeImageId = "ReviewAcceptChange";
             this.btnFixAll.ScreenTip = "一键修复";
             this.btnFixAll.ShowImage = true;
-            this.btnFixAll.SuperTip = "先运行全部专项检测，再批量应用可修复建议，并保留淡色底纹和 Word 批注。";
+            this.btnFixAll.SuperTip = "先运行全部专项检测，再批量应用可修复建议，并保留淡色底纹作为插件留痕。";
             this.btnFixAll.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.BtnFixAll_Click);
             // 
             // btnClear
