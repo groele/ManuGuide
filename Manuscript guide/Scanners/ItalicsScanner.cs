@@ -75,69 +75,115 @@ namespace Manuscript_guide.Scanners
 
         private void AddUprightIssues(Document doc, string documentText, Regex regex, string subtype, string description, List<IssueItem> issues)
         {
+            var context = DocumentScanContext.Current;
+            var snapshot = context?.Snapshot;
+
             foreach (Match match in regex.Matches(documentText))
             {
-                Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, match.Value);
-                if (targetRange == null)
+                int index = match.Index;
+                int length = match.Length;
+
+                if (snapshot != null)
                 {
-                    continue;
+                    if (!snapshot.Italics.IsSpanFullyCovered(index, index + length))
+                    {
+                        continue;
+                    }
+                    if (snapshot.ProtectedRanges.Intersects(index, index + length))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, index, length, match.Value);
+                    if (targetRange == null || ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic != 1)
+                    {
+                        continue;
+                    }
                 }
 
-                if (ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic != 1)
-                {
-                    continue;
-                }
-
-                AddIssue(doc, documentText, targetRange, subtype, match.Value, match.Value,
+                AddIssue(doc, documentText, subtype, index, length, match.Value, match.Value,
                     string.Format(description, match.Value), issues);
             }
         }
 
         private void AddExistingItalicReviewIssues(Document doc, string documentText, List<IssueItem> issues)
         {
-            Range italicRange = doc.Content;
-            italicRange.Find.ClearFormatting();
-            italicRange.Find.Font.Italic = 1;
-            italicRange.Find.Text = "";
-            italicRange.Find.Forward = true;
-            italicRange.Find.Format = true;
-            italicRange.Find.Wrap = WdFindWrap.wdFindStop;
+            var context = DocumentScanContext.Current;
+            var snapshot = context?.Snapshot;
 
-            int guard = 0;
-            while (italicRange.Find.Execute())
+            if (snapshot != null)
             {
-                if (++guard > MaxExistingItalicIssues)
+                int count = 0;
+                foreach (var range in snapshot.Italics.Ranges)
                 {
-                    break;
-                }
+                    if (++count > MaxExistingItalicIssues)
+                    {
+                        break;
+                    }
 
-                string text = italicRange.Text == null ? string.Empty : italicRange.Text.Trim();
-                if (!string.IsNullOrEmpty(text) && !ProtectedRangeService.IsRangeProtected(italicRange))
-                {
-                    AddIssue(doc, documentText, doc.Range(italicRange.Start, italicRange.End), "ExistingItalicReview",
-                        text, text,
-                        $"检测到已存在的斜体文本“{text}”。此项仅用于复核正文中所有斜体位置，确认其是否确实应作为变量、物种名或期刊要求的斜体保留。",
-                        issues);
-                }
+                    int start = range.Start;
+                    int end = range.End;
+                    if (start < 0 || end > documentText.Length) continue;
 
-                int nextStart = Math.Max(italicRange.End, italicRange.Start + 1);
-                if (nextStart >= doc.Content.End)
-                {
-                    break;
+                    string text = documentText.Substring(start, end - start).Trim();
+                    if (!string.IsNullOrEmpty(text) && !snapshot.ProtectedRanges.Intersects(start, end))
+                    {
+                        AddIssue(doc, documentText, "ExistingItalicReview", start, end - start, text, text,
+                            $"检测到已存在的斜体文本“{text}”。此项仅用于复核正文中所有斜体位置，确认其是否确实应作为变量、物种名或期刊要求的斜体保留。",
+                            issues);
+                    }
                 }
-
-                italicRange.SetRange(nextStart, doc.Content.End);
+            }
+            else
+            {
+                Range italicRange = doc.Content;
                 italicRange.Find.ClearFormatting();
                 italicRange.Find.Font.Italic = 1;
                 italicRange.Find.Text = "";
                 italicRange.Find.Forward = true;
                 italicRange.Find.Format = true;
                 italicRange.Find.Wrap = WdFindWrap.wdFindStop;
+
+                int guard = 0;
+                while (italicRange.Find.Execute())
+                {
+                    if (++guard > MaxExistingItalicIssues)
+                    {
+                        break;
+                    }
+
+                    string text = italicRange.Text == null ? string.Empty : italicRange.Text.Trim();
+                    if (!string.IsNullOrEmpty(text) && !ProtectedRangeService.IsRangeProtected(italicRange))
+                    {
+                        AddIssue(doc, documentText, "ExistingItalicReview", italicRange.Start - doc.Content.Start, italicRange.End - italicRange.Start, text, text,
+                            $"检测到已存在的斜体文本“{text}”。此项仅用于复核正文中所有斜体位置，确认其是否确实应作为变量、物种名或期刊要求的斜体保留。",
+                            issues);
+                    }
+
+                    int nextStart = Math.Max(italicRange.End, italicRange.Start + 1);
+                    if (nextStart >= doc.Content.End)
+                    {
+                        break;
+                    }
+
+                    italicRange.SetRange(nextStart, doc.Content.End);
+                    italicRange.Find.ClearFormatting();
+                    italicRange.Find.Font.Italic = 1;
+                    italicRange.Find.Text = "";
+                    italicRange.Find.Forward = true;
+                    italicRange.Find.Format = true;
+                    italicRange.Find.Wrap = WdFindWrap.wdFindStop;
+                }
             }
         }
 
         private void AddVariableItalicIssues(Document doc, string documentText, List<IssueItem> issues)
         {
+            var context = DocumentScanContext.Current;
+            var snapshot = context?.Snapshot;
+
             int count = 0;
             foreach (Match match in SingleLetterTokenRegex.Matches(documentText))
             {
@@ -154,18 +200,27 @@ namespace Manuscript_guide.Scanners
                     continue;
                 }
 
-                Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, tokenIndex, text.Length, text);
-                if (targetRange == null)
+                if (snapshot != null)
                 {
-                    continue;
+                    if (snapshot.Italics.IsSpanFullyCovered(tokenIndex, tokenIndex + text.Length))
+                    {
+                        continue;
+                    }
+                    if (snapshot.ProtectedRanges.Intersects(tokenIndex, tokenIndex + text.Length))
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    Range targetRange = DocumentScanContext.CreateRangeFromTextSpan(doc, tokenIndex, text.Length, text);
+                    if (targetRange == null || ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic == 1)
+                    {
+                        continue;
+                    }
                 }
 
-                if (ProtectedRangeService.IsRangeProtected(targetRange) || targetRange.Font.Italic == 1)
-                {
-                    continue;
-                }
-
-                AddIssue(doc, documentText, targetRange, "VariableItalic", text, text,
+                AddIssue(doc, documentText, "VariableItalic", tokenIndex, text.Length, text, text,
                     $"作为物理或数学公式变量的单字母“{text}”在学术规范中应设为斜体（Italic）排版。",
                     issues);
 
@@ -223,17 +278,25 @@ namespace Manuscript_guide.Scanners
 
         private static bool IsWordTokenChar(char c)
         {
-            return char.IsLetterOrDigit(c) || c == '_';
+            if (char.IsLetterOrDigit(c) || c == '_')
+            {
+                return true;
+            }
+
+            // Treat Unicode subscripts and superscripts as part of the word
+            string unicodeSubSups = "₀₁₂₃₄₅₆₇₈₉ₓ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼";
+            return unicodeSubSups.IndexOf(c) >= 0;
         }
 
-        private void AddIssue(Document doc, string documentText, Range targetRange, string subtype, string originalText, string recommendFix, string desc, List<IssueItem> issues)
+        private void AddIssue(Document doc, string documentText, string subtype, int start, int length, string originalText, string recommendFix, string desc, List<IssueItem> issues)
         {
-            IssueItem issue = IssueMatchFactory.CreateFromRange(
+            IssueItem issue = IssueMatchFactory.Create(
                 doc,
                 documentText,
                 ModuleType,
                 subtype,
-                targetRange,
+                start,
+                length,
                 originalText,
                 recommendFix,
                 desc);

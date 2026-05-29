@@ -131,24 +131,6 @@ namespace Manuscript_guide.Services
             catch
             {
             }
-
-            try
-            {
-                for (int i = 1; i <= range.Characters.Count; i++)
-                {
-                    try
-                    {
-                        Range charRange = range.Characters[i];
-                        charRange.Shading.BackgroundPatternColor = WdColor.wdColorAutomatic;
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
-            catch
-            {
-            }
         }
     }
 }

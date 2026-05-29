@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Office.Interop.Word;
+using Manuscript_guide.Models;
 
 namespace Manuscript_guide.Services
 {
@@ -24,7 +25,35 @@ namespace Manuscript_guide.Services
             current = this;
         }
 
+        private DocumentScanContext(Document doc, DocumentSnapshot snapshot)
+        {
+            Document = doc;
+            Snapshot = snapshot;
+            ContentStart = snapshot.ContentStart;
+            RawText = snapshot.FullText;
+            ProtectedRanges = new List<ProtectedTextRange>(snapshot.ProtectedRanges.Ranges);
+            Text = ProtectedRangeService.MaskProtectedText(RawText, ProtectedRanges, ContentStart);
+            RuleStats = new Dictionary<string, ScannerRuleStats>();
+            
+            TextSegments = new List<TextSegment>();
+            foreach (var p in snapshot.Paragraphs)
+            {
+                TextSegments.Add(new TextSegment
+                {
+                    TextStart = p.Start,
+                    TextEnd = p.End,
+                    DocumentStart = p.Start + ContentStart,
+                    DocumentEnd = p.End + ContentStart,
+                    Text = p.Text
+                });
+            }
+
+            previous = current;
+            current = this;
+        }
+
         public Document Document { get; private set; }
+        public DocumentSnapshot Snapshot { get; private set; }
         public int ContentStart { get; private set; }
         public string RawText { get; private set; }
         public string Text { get; private set; }
@@ -42,9 +71,15 @@ namespace Manuscript_guide.Services
             return new DocumentScanContext(doc);
         }
 
+        public static DocumentScanContext Begin(Document doc, DocumentSnapshot snapshot)
+        {
+            return new DocumentScanContext(doc, snapshot);
+        }
+
         public static string GetText(Document doc)
         {
-            if (current != null && ReferenceEquals(current.Document, doc))
+            // When doc is null (background scan path), use the active context's cached text
+            if (current != null && (doc == null || ReferenceEquals(current.Document, doc)))
             {
                 return current.Text;
             }
@@ -54,7 +89,7 @@ namespace Manuscript_guide.Services
 
         public static List<ProtectedTextRange> GetProtectedRanges(Document doc)
         {
-            if (current != null && ReferenceEquals(current.Document, doc))
+            if (current != null && (doc == null || ReferenceEquals(current.Document, doc)))
             {
                 return current.ProtectedRanges;
             }
@@ -82,7 +117,7 @@ namespace Manuscript_guide.Services
                 return segment.DocumentStart + (textOffset - segment.TextStart);
             }
 
-            int contentStart = current != null && ReferenceEquals(current.Document, doc)
+            int contentStart = current != null && (doc == null || ReferenceEquals(current.Document, doc))
                 ? current.ContentStart
                 : GetContentStart(doc);
             return contentStart + textOffset;
@@ -90,7 +125,7 @@ namespace Manuscript_guide.Services
 
         public static int DocumentPositionToTextOffset(Document doc, int documentPosition)
         {
-            if (current != null && ReferenceEquals(current.Document, doc) && current.TextSegments != null)
+            if (current != null && (doc == null || ReferenceEquals(current.Document, doc)) && current.TextSegments != null)
             {
                 foreach (TextSegment segment in current.TextSegments)
                 {
@@ -101,7 +136,7 @@ namespace Manuscript_guide.Services
                 }
             }
 
-            int contentStart = current != null && ReferenceEquals(current.Document, doc)
+            int contentStart = current != null && (doc == null || ReferenceEquals(current.Document, doc))
                 ? current.ContentStart
                 : GetContentStart(doc);
             return Math.Max(0, documentPosition - contentStart);
@@ -155,7 +190,7 @@ namespace Manuscript_guide.Services
 
         private static TextSegment FindTextSegment(Document doc, int textOffset)
         {
-            if (current == null || !ReferenceEquals(current.Document, doc) || current.TextSegments == null)
+            if (current == null || (doc != null && !ReferenceEquals(current.Document, doc)) || current.TextSegments == null)
             {
                 return null;
             }

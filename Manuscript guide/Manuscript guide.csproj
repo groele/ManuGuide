@@ -225,6 +225,10 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Models\IssueItem.cs" />
+    <Compile Include="Models\ProtectedRangeIndex.cs" />
+    <Compile Include="Models\DocumentSnapshot.cs" />
+    <Compile Include="Models\ScannableSegment.cs" />
+    <Compile Include="Models\MutationPlan.cs" />
     <Compile Include="Services\EventBus.cs" />
     <Compile Include="Services\DiagnosticModuleRegistry.cs" />
     <Compile Include="Services\DiagnosticRuleRegistry.cs" />
@@ -238,6 +242,10 @@
     <Compile Include="Services\ShadingManager.cs" />
     <Compile Include="Services\CorrectionTracker.cs" />
     <Compile Include="Services\SubscriptFormatter.cs" />
+    <Compile Include="Services\DocumentSnapshotBuilder.cs" />
+    <Compile Include="Services\ScanResultCache.cs" />
+    <Compile Include="Services\ScannerOrchestrator.cs" />
+    <Compile Include="Services\ScannableSegmentPlanner.cs" />
     <Compile Include="Scanners\ISpecializedScanner.cs" />
     <Compile Include="Scanners\IssueMatchFactory.cs" />
     <Compile Include="Scanners\ScannerRuleRunner.cs" />

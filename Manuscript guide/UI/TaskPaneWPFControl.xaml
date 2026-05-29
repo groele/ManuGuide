@@ -250,7 +250,7 @@
                     <TextBox x:Name="txtKeywordInput" Height="26" VerticalContentAlignment="Center" Padding="4,0" FontSize="11" Margin="0,0,0,10"/>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                        <CheckBox x:Name="chkCaseSensitive" Content="区分大小写" FontSize="11" Margin="0,0,16,0" IsChecked="True"/>
+                        <CheckBox x:Name="chkCaseSensitive" Content="区分大小写" FontSize="11" Margin="0,0,16,0" IsChecked="False"/>
                         <CheckBox x:Name="chkWholeWord" Content="全字匹配" FontSize="11" IsChecked="False"/>
                     </StackPanel>
 

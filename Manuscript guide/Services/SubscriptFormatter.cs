@@ -29,38 +29,80 @@ namespace Manuscript_guide.Services
 
             if (formatType == "chemical")
             {
-                // Chemical subscripts: set all numbers to Subscript
-                for (int i = 1; i <= formattedRange.Characters.Count; i++)
+                // Chemical subscripts: set all numbers to Subscript using native Find
+                Range findRange = doc.Range(formattedRange.Start, formattedRange.End);
+                Find find = findRange.Find;
+                find.ClearFormatting();
+                find.Text = "^#"; // Any digit
+                find.Forward = true;
+                find.Wrap = WdFindWrap.wdFindStop;
+                while (find.Execute())
                 {
-                    Range charRange = formattedRange.Characters[i];
-                    string t = charRange.Text;
-                    if (t.Length == 1 && char.IsDigit(t[0]))
-                    {
-                        charRange.Font.Subscript = 1;
-                        charRange.Font.Superscript = 0;
-                    }
+                    if (findRange.Start >= formattedRange.End) break;
+                    findRange.Font.Subscript = 1;
+                    findRange.Font.Superscript = 0;
+                    findRange.Collapse(WdCollapseDirection.wdCollapseEnd);
+                    findRange.End = formattedRange.End;
                 }
             }
             else if (formatType == "unit")
             {
-                // Physical units: e.g. cm-3, set negative symbols and numbers to Superscript
-                for (int i = 1; i <= formattedRange.Characters.Count; i++)
+                // Physical units: e.g. cm-3, set negative symbols and numbers to Superscript using native Find
+                // 1. Find and superscript digits
+                Range findRange = doc.Range(formattedRange.Start, formattedRange.End);
+                Find find = findRange.Find;
+                find.ClearFormatting();
+                find.Text = "^#";
+                find.Forward = true;
+                find.Wrap = WdFindWrap.wdFindStop;
+                while (find.Execute())
                 {
-                    Range charRange = formattedRange.Characters[i];
-                    string t = charRange.Text;
-                    if (t == "-" || t == "−" || (t.Length == 1 && char.IsDigit(t[0])))
-                    {
-                        charRange.Font.Superscript = 1;
-                        charRange.Font.Subscript = 0;
-                    }
+                    if (findRange.Start >= formattedRange.End) break;
+                    findRange.Font.Superscript = 1;
+                    findRange.Font.Subscript = 0;
+                    findRange.Collapse(WdCollapseDirection.wdCollapseEnd);
+                    findRange.End = formattedRange.End;
+                }
+
+                // 2. Find and superscript minus sign '-'
+                findRange = doc.Range(formattedRange.Start, formattedRange.End);
+                find = findRange.Find;
+                find.ClearFormatting();
+                find.Text = "-";
+                find.Forward = true;
+                find.Wrap = WdFindWrap.wdFindStop;
+                while (find.Execute())
+                {
+                    if (findRange.Start >= formattedRange.End) break;
+                    findRange.Font.Superscript = 1;
+                    findRange.Font.Subscript = 0;
+                    findRange.Collapse(WdCollapseDirection.wdCollapseEnd);
+                    findRange.End = formattedRange.End;
+                }
+
+                // 3. Find and superscript minus sign '−' (Unicode minus)
+                findRange = doc.Range(formattedRange.Start, formattedRange.End);
+                find = findRange.Find;
+                find.ClearFormatting();
+                find.Text = "−";
+                find.Forward = true;
+                find.Wrap = WdFindWrap.wdFindStop;
+                while (find.Execute())
+                {
+                    if (findRange.Start >= formattedRange.End) break;
+                    findRange.Font.Superscript = 1;
+                    findRange.Font.Subscript = 0;
+                    findRange.Collapse(WdCollapseDirection.wdCollapseEnd);
+                    findRange.End = formattedRange.End;
                 }
             }
             else if (formatType == "desc")
             {
                 // Academic descriptions: e.g., Eg -> E_g, where g is standard subscript (upright)
-                if (formattedRange.Characters.Count > 1)
+                // Use absolute character offset (Start + 1) instead of the slow Characters[2] COM call
+                if (cleanAscii.Length > 1)
                 {
-                    Range subRange = doc.Range(formattedRange.Characters[2].Start, formattedRange.End);
+                    Range subRange = doc.Range(formattedRange.Start + 1, formattedRange.End);
                     subRange.Font.Subscript = 1;
                     subRange.Font.Superscript = 0;
                     subRange.Font.Italic = 0; // Upright subscripts for physical labels

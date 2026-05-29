@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Microsoft.Office.Interop.Word;
@@ -18,7 +18,6 @@ namespace Manuscript_guide.Scanners
             if (string.IsNullOrEmpty(text)) return issues;
 
             // 1. Full-width punctuation checks inside English context
-            // Search for full-width comma ，, full-width period 。 , full-width semicolon ；
             if (SettingsManager.IsRuleEnabled(ModuleType, "fullwidth_punctuation"))
             {
                 MatchFullWidth(text, "，", ", ", "全角逗号", "在英文手稿中误用了中文全角逗号“，”", doc, issues);
@@ -28,7 +27,6 @@ namespace Manuscript_guide.Scanners
             }
 
             // 2. Missing half-width space after comma/semicolon/colon
-            // Match any letter/digit followed by a half-width comma/semicolon/colon and immediately another letter/digit (without space)
             if (SettingsManager.IsRuleEnabled(ModuleType, "punctuation_spacing"))
             {
                 Regex missingSpaceRegex = new Regex(@"([a-zA-Z0-9])([,;:?!])([a-zA-Z])");
@@ -62,9 +60,6 @@ namespace Manuscript_guide.Scanners
             // 3. Greek Mu / Micro Symbol normalization
             if (SettingsManager.IsRuleEnabled(ModuleType, "greek_mu_encoding"))
             {
-                // Micro Sign (U+00B5) to standard Greek Mu (U+03BC)
-                // U+00B5 character: 'µ'
-                // U+03BC character: 'μ'
                 for (int i = 0; i < text.Length; i++)
                 {
                     if (text[i] == '\u00B5')
@@ -98,27 +93,29 @@ namespace Manuscript_guide.Scanners
 
             if (checkEquationSpacing || checkEquationTerminalPunctuation)
             {
-                try
+                var context = DocumentScanContext.Current;
+                if (context != null && context.Snapshot != null)
                 {
-                    foreach (OMath omath in doc.OMaths)
+                    // High Performance: Scan purely from the immutable snapshot
+                    var snapshot = context.Snapshot;
+                    foreach (var range in snapshot.OMaths.Ranges)
                     {
-                        Range omathRange = omath.Range;
-                        int start = omathRange.Start;
-                        int end = omathRange.End;
+                        int start = range.Start;
+                        int end = range.End;
 
                         // Check equation spacing before
                         if (checkEquationSpacing && start > 0)
                         {
-                            Range preRange = doc.Range(start - 1, start);
-                            string preText = preRange.Text;
+                            string preText = text.Substring(start - 1, 1);
                             if (!string.IsNullOrEmpty(preText) && Regex.IsMatch(preText, @"[a-zA-Z0-9]"))
                             {
-                                IssueItem issue = IssueMatchFactory.CreateFromRange(
+                                IssueItem issue = IssueMatchFactory.Create(
                                     doc,
                                     text,
                                     ModuleType,
                                     "EquationSpacing",
-                                    preRange,
+                                    start - 1,
+                                    1,
                                     preText,
                                     preText + " ",
                                     "公式域与前文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
@@ -132,18 +129,18 @@ namespace Manuscript_guide.Scanners
                         // Check equation spacing & punctuation after
                         if (end < text.Length)
                         {
-                            Range postRange = doc.Range(end, end + 1);
-                            string postText = postRange.Text;
+                            string postText = text.Substring(end, 1);
 
                             // Missing space after formula when followed by an alphanumeric character
                             if (checkEquationSpacing && !string.IsNullOrEmpty(postText) && Regex.IsMatch(postText, @"[a-zA-Z0-9]"))
                             {
-                                IssueItem issue = IssueMatchFactory.CreateFromRange(
+                                IssueItem issue = IssueMatchFactory.Create(
                                     doc,
                                     text,
                                     ModuleType,
                                     "EquationSpacing",
-                                    postRange,
+                                    end,
+                                    1,
                                     postText,
                                     " " + postText,
                                     "公式域与后文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
@@ -156,16 +153,16 @@ namespace Manuscript_guide.Scanners
                             // Missing punctuation when equation paragraph ends
                             if (checkEquationTerminalPunctuation && !string.IsNullOrEmpty(postText) && (postText == "\r" || postText == "\n"))
                             {
-                                Range lastCharRange = doc.Range(end - 1, end);
-                                string lastChar = lastCharRange.Text;
+                                string lastChar = text.Substring(end - 1, 1);
                                 if (!string.IsNullOrEmpty(lastChar) && !Regex.IsMatch(lastChar, @"[,.;:?!，。；：？！]"))
                                 {
-                                    IssueItem issue = IssueMatchFactory.CreateFromRange(
+                                    IssueItem issue = IssueMatchFactory.Create(
                                         doc,
                                         text,
                                         ModuleType,
                                         "EquationPunctuation",
-                                        lastCharRange,
+                                        end - 1,
+                                        1,
                                         lastChar,
                                         lastChar + ".",
                                         "行内或独立公式作为句子结尾，末尾遗漏了标点符号（如句点“.”或逗号“,”），请检查并规范。");
@@ -178,9 +175,92 @@ namespace Manuscript_guide.Scanners
                         }
                     }
                 }
-                catch (Exception)
+                else
                 {
-                    // Fail-safe for document OMath traversal
+                    // Fallback (only used if running outside snapshot context)
+                    try
+                    {
+                        foreach (OMath omath in doc.OMaths)
+                        {
+                            Range omathRange = omath.Range;
+                            int start = DocumentScanContext.DocumentPositionToTextOffset(doc, omathRange.Start);
+                            int end = DocumentScanContext.DocumentPositionToTextOffset(doc, omathRange.End);
+
+                            // Check equation spacing before
+                            if (checkEquationSpacing && start > 0)
+                            {
+                                string preText = text.Substring(start - 1, 1);
+                                if (!string.IsNullOrEmpty(preText) && Regex.IsMatch(preText, @"[a-zA-Z0-9]"))
+                                {
+                                    IssueItem issue = IssueMatchFactory.Create(
+                                        doc,
+                                        text,
+                                        ModuleType,
+                                        "EquationSpacing",
+                                        start - 1,
+                                        1,
+                                        preText,
+                                        preText + " ",
+                                        "公式域与前文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
+                                    if (issue != null)
+                                    {
+                                        issues.Add(issue);
+                                    }
+                                }
+                            }
+
+                            // Check equation spacing & punctuation after
+                            if (end < text.Length)
+                            {
+                                string postText = text.Substring(end, 1);
+
+                                // Missing space after formula when followed by an alphanumeric character
+                                if (checkEquationSpacing && !string.IsNullOrEmpty(postText) && Regex.IsMatch(postText, @"[a-zA-Z0-9]"))
+                                {
+                                    IssueItem issue = IssueMatchFactory.Create(
+                                        doc,
+                                        text,
+                                        ModuleType,
+                                        "EquationSpacing",
+                                        end,
+                                        1,
+                                        postText,
+                                        " " + postText,
+                                        "公式域与后文英文单词之间缺失空格，建议添加半角空格以满足国际主流期刊排版规范。");
+                                    if (issue != null)
+                                    {
+                                        issues.Add(issue);
+                                    }
+                                }
+
+                                // Missing punctuation when equation paragraph ends
+                                if (checkEquationTerminalPunctuation && !string.IsNullOrEmpty(postText) && (postText == "\r" || postText == "\n"))
+                                {
+                                    string lastChar = text.Substring(end - 1, 1);
+                                    if (!string.IsNullOrEmpty(lastChar) && !Regex.IsMatch(lastChar, @"[,.;:?!，。；：？！]"))
+                                    {
+                                        IssueItem issue = IssueMatchFactory.Create(
+                                            doc,
+                                            text,
+                                            ModuleType,
+                                            "EquationPunctuation",
+                                            end - 1,
+                                            1,
+                                            lastChar,
+                                            lastChar + ".",
+                                            "行内或独立公式作为句子结尾，末尾遗漏了标点符号（如句点“.”或逗号“,”），请检查并规范。");
+                                        if (issue != null)
+                                        {
+                                            issues.Add(issue);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
                 }
             }
 
@@ -246,8 +326,7 @@ namespace Manuscript_guide.Scanners
             int end = Math.Min(text.Length, index + length + 20);
             string snippet = text.Substring(start, end - start);
             snippet = snippet.Replace("\r", " ").Replace("\n", " ");
-            
-            // Use plain text markers because the WPF TextBlock does not render HTML tags.
+
             int matchOffset = index - start;
             if (matchOffset >= 0 && matchOffset < snippet.Length)
             {
@@ -260,4 +339,3 @@ namespace Manuscript_guide.Scanners
         }
     }
 }
-

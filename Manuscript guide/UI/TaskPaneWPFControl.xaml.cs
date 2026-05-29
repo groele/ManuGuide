@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -22,6 +23,8 @@ namespace Manuscript_guide.UI
         private List<IssueItem> currentIssues = new List<IssueItem>();
         private RadioButton radUseNativeSubscript;
         private RadioButton radUseUnicodeSubscript;
+        private readonly List<CheckBox> ruleCheckBoxes = new List<CheckBox>();
+        private bool isLoadingSettings;
 
         public TaskPaneWPFControl()
         {
@@ -33,6 +36,7 @@ namespace Manuscript_guide.UI
             EventBus.FullFixRequested += OnFullFixRequested;
             EventBus.ClearHighlightsRequested += OnClearHighlightsRequested;
             EventBus.OpenSettingsRequested += OnOpenSettingsRequested;
+            EventBus.SettingsChanged += OnSettingsChanged;
 
             // Load settings into UI on startup
             LoadSettingsToUI();
@@ -88,26 +92,26 @@ namespace Manuscript_guide.UI
 
         private void OnFullScanRequested()
         {
-            this.Dispatcher.Invoke(() =>
+            this.Dispatcher.Invoke(async () =>
             {
                 this.Visibility = Visibility.Visible;
                 ShowPanel("active");
                 txtTitleText.Text = "一键检测 - 全部专项";
                 txtTitleIcon.Text = "⚙️";
-                RunFullScan();
+                await RunFullScanAsync();
             });
         }
 
         private void OnFullFixRequested()
         {
-            this.Dispatcher.Invoke(() =>
+            this.Dispatcher.Invoke(async () =>
             {
                 this.Visibility = Visibility.Visible;
                 ShowPanel("active");
                 txtTitleText.Text = "一键修复 - 全部专项";
                 txtTitleIcon.Text = "⚙️";
 
-                if (RunFullScan())
+                if (await RunFullScanAsync())
                 {
                     FixCurrentIssues(true);
                 }
@@ -119,11 +123,24 @@ namespace Manuscript_guide.UI
             this.Dispatcher.Invoke(() =>
             {
                 this.Visibility = Visibility.Visible;
+                LoadSettingsToUI();
                 ShowPanel("rules");
             });
         }
 
-        private void RunActiveScan(string moduleType)
+        private void OnSettingsChanged()
+        {
+            ScanResultCache.Invalidate();
+            this.Dispatcher.Invoke(() =>
+            {
+                if (!string.IsNullOrEmpty(currentModuleType) && currentModuleType != "keyword" && currentModuleType != "rules")
+                {
+                    PopulateModuleConfigPanel(currentModuleType);
+                }
+            });
+        }
+
+        private async void RunActiveScan(string moduleType)
         {
             currentModuleType = moduleType;
             currentIssues.Clear();
@@ -131,8 +148,8 @@ namespace Manuscript_guide.UI
             txtErrCount.Text = "0";
             emptyScanState.Visibility = Visibility.Collapsed;
 
-            txtFooterStatus.Text = "正在扫描正文...";
-            progressAudit.Value = 20;
+            txtFooterStatus.Text = "正在准备构建快照并进行后台扫描...";
+            progressAudit.Value = 5;
 
             Word.Document doc = null;
             try
@@ -150,29 +167,42 @@ namespace Manuscript_guide.UI
 
             try
             {
-                ScannerStatsSnapshot stats = null;
+                // Run background scan orchestrator asynchronously!
+                // Clear existing highlights of this module on the main thread first
+                ShadingManager.ClearModuleShading(doc, moduleType);
+
+                var issues = await ScannerOrchestrator.ScanAsync(doc, moduleType, progress =>
+                {
+                    this.Dispatcher.Invoke(() =>
+                    {
+                        progressAudit.Value = progress;
+                        txtFooterStatus.Text = $"正在扫描正文... ({progress}%)";
+                    });
+                });
+
+                currentIssues = issues;
+                
+                txtFooterStatus.Text = "扫描完成，正在添加标注高亮...";
+                progressAudit.Value = 96;
+
+                int marked = 0;
                 RunWithWordUiPaused(() =>
                 {
-                    using (DocumentScanContext.Begin(doc))
+                    using (var context = DocumentScanContext.Begin(doc))
                     {
-                        ProtectedRangeService.RefreshProtectedMarkers(doc);
-
-                        // Clear existing highlights of this module first
-                        ShadingManager.ClearModuleShading(doc, moduleType);
-                        progressAudit.Value = 40;
-
-                        // Retrieve dedicated scanner
-                        ISpecializedScanner scanner = DiagnosticModuleRegistry.CreateScanner(moduleType);
-                        if (scanner == null)
+                        foreach (var issue in currentIssues)
                         {
-                            txtFooterStatus.Text = "未知扫描类型";
-                            return;
+                            Word.Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, issue.Start, issue.End - issue.Start, issue.OriginalText);
+                            if (r != null)
+                            {
+                                string bmk = CorrectionTracker.Instance.CreateBookmark(doc, issue.IssueId, r, moduleType);
+                                if (!string.IsNullOrEmpty(bmk))
+                                {
+                                    ShadingManager.ApplyActiveShading(r, moduleType);
+                                    marked++;
+                                }
+                            }
                         }
-
-                        // Run scan in Word document
-                        List<IssueItem> issues = IssueMetadataService.EnrichAll(scanner.Scan(doc));
-                        currentIssues = ProtectedRangeService.FilterIssues(doc, issues);
-                        stats = DocumentScanContext.GetStatsSnapshot(moduleType);
                     }
                 });
 
@@ -181,7 +211,7 @@ namespace Manuscript_guide.UI
                 emptyScanState.Visibility = currentIssues.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
                 progressAudit.Value = 100;
-                txtFooterStatus.Text = "扫描完成，" + BuildScanStatusText(stats, currentIssues.Count);
+                txtFooterStatus.Text = $"扫描并标注完成，共发现 {currentIssues.Count} 处建议，成功标记 {marked} 处。";
 
                 PopulateModuleConfigPanel(moduleType);
                 ShowToast($"“{DiagnosticModuleRegistry.GetDisplayName(moduleType)}”扫描完成！");
@@ -193,7 +223,7 @@ namespace Manuscript_guide.UI
             }
         }
 
-        private bool RunFullScan()
+        private async Task<bool> RunFullScanAsync()
         {
             currentModuleType = "all";
             currentIssues.Clear();
@@ -201,7 +231,7 @@ namespace Manuscript_guide.UI
             txtErrCount.Text = "0";
             emptyScanState.Visibility = Visibility.Collapsed;
 
-            txtFooterStatus.Text = "正在执行全部专项检测...";
+            txtFooterStatus.Text = "正在准备构建快照并进行一键检测...";
             progressAudit.Value = 5;
 
             Word.Document doc = null;
@@ -216,42 +246,48 @@ namespace Manuscript_guide.UI
                 return false;
             }
 
-            if (doc == null)
-            {
-                return false;
-            }
+            if (doc == null) return false;
 
             try
             {
-                ScannerStatsSnapshot stats = null;
+                // Clear existing highlights of all modules first
+                foreach (DiagnosticModule module in DiagnosticModuleRegistry.FullScanModules)
+                {
+                    ShadingManager.ClearModuleShading(doc, module.ModuleType);
+                }
+
+                var issues = await ScannerOrchestrator.ScanAsync(doc, "all", progress =>
+                {
+                    this.Dispatcher.Invoke(() =>
+                    {
+                        progressAudit.Value = progress;
+                        txtFooterStatus.Text = $"正在进行一键检测... ({progress}%)";
+                    });
+                });
+
+                currentIssues = issues;
+
+                txtFooterStatus.Text = "一键检测扫描完成，正在添加标注高亮...";
+                progressAudit.Value = 96;
+
+                int marked = 0;
                 RunWithWordUiPaused(() =>
                 {
-                    using (DocumentScanContext.Begin(doc))
+                    using (var context = DocumentScanContext.Begin(doc))
                     {
-                        ProtectedRangeService.RefreshProtectedMarkers(doc);
-
-                        List<IssueItem> allIssues = new List<IssueItem>();
-                        int completed = 0;
-
-                        int moduleCount = DiagnosticModuleRegistry.FullScanModuleCount;
-                        foreach (DiagnosticModule module in DiagnosticModuleRegistry.FullScanModules)
+                        foreach (var issue in currentIssues)
                         {
-                            txtFooterStatus.Text = "正在扫描：" + module.DisplayName;
-                            progressAudit.Value = 5 + (completed * 90 / moduleCount);
-
-                            ShadingManager.ClearModuleShading(doc, module.ModuleType);
-                            ISpecializedScanner scanner = module.CreateScanner();
-                            if (scanner != null)
+                            Word.Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, issue.Start, issue.End - issue.Start, issue.OriginalText);
+                            if (r != null)
                             {
-                                List<IssueItem> issues = IssueMetadataService.EnrichAll(scanner.Scan(doc));
-                                allIssues.AddRange(ProtectedRangeService.FilterIssues(doc, issues));
+                                string bmk = CorrectionTracker.Instance.CreateBookmark(doc, issue.IssueId, r, issue.Type);
+                                if (!string.IsNullOrEmpty(bmk))
+                                {
+                                    ShadingManager.ApplyActiveShading(r, issue.Type);
+                                    marked++;
+                                }
                             }
-
-                            completed++;
                         }
-
-                        currentIssues = allIssues;
-                        stats = DocumentScanContext.GetStatsSnapshot("all");
                     }
                 });
 
@@ -260,9 +296,9 @@ namespace Manuscript_guide.UI
                 emptyScanState.Visibility = currentIssues.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
                 progressAudit.Value = 100;
-                txtFooterStatus.Text = "全部专项检测完成，" + BuildScanStatusText(stats, currentIssues.Count);
+                txtFooterStatus.Text = $"一键检测完成，共发现 {currentIssues.Count} 处建议，成功标记 {marked} 处。";
                 PopulateModuleConfigPanel("all");
-                ShowToast($"一键检测完成，共发现 {currentIssues.Count} 处建议。");
+                ShowToast($"一键检测完成，共发现 {currentIssues.Count} 处建议！");
                 return true;
             }
             catch (Exception ex)
@@ -474,9 +510,10 @@ namespace Manuscript_guide.UI
             }
 
             int fixedCount = 0;
+            var sortedIssues = MutationPlan.BuildDescending(currentIssues);
             RunWithWordUiPaused(() =>
             {
-                foreach (var issue in currentIssues)
+                foreach (var issue in sortedIssues)
                 {
                     if (CorrectionTracker.Instance.CanUndo(issue.IssueId)) continue; // Already corrected
 
@@ -677,7 +714,14 @@ namespace Manuscript_guide.UI
             {
                 RunWithWordUiPaused(() =>
                 {
-                    int count = 0;
+                    bool useLegacyWordFind = false;
+                    if (!useLegacyWordFind)
+                    {
+                        RunKeywordSearchByTextIndex(doc, keywords, caseSensitive, wholeWord, colorHex);
+                    }
+                    else
+                    {
+                        int count = 0;
                     using (DocumentScanContext.Begin(doc))
                     {
                         ProtectedRangeService.RefreshProtectedMarkers(doc);
@@ -746,6 +790,7 @@ namespace Manuscript_guide.UI
                     boxSearchStats.Visibility = Visibility.Visible;
                     txtSearchStatsResult.Text = $"共查找到并标记了 {count} 处匹配的关键词。";
                     ShowToast($"查找标记完成，共找到 {count} 处！");
+                    }
                 });
             }
             catch (Exception ex)
@@ -754,34 +799,142 @@ namespace Manuscript_guide.UI
             }
         }
 
-        private void LoadSettingsToUI()
+        private void RunKeywordSearchByTextIndex(Word.Document doc, string keywords, bool caseSensitive, bool wholeWord, string colorHex)
         {
-            var settings = SettingsManager.Current;
-            SyncLegacySettingsFromRuleToggles(settings);
+            int count = 0;
+            Dictionary<string, int> foundByTerm = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            txtWhitelistCasing.Text = settings.WhitelistCasing;
-            txtWhitelistAcronyms.Text = settings.WhitelistAcronyms;
-
-            sldCasingRatio.Value = settings.CasingRatioThreshold;
-            txtCasingRatioVal.Text = settings.CasingRatioThreshold + "%";
-
-            txtAcronymLag.Text = settings.MaxAcronymLagCharacters.ToString();
-
-            // Load Colors
-            var colors = settings.Colors;
-            if (colors != null)
+            using (DocumentScanContext.Begin(doc))
             {
-                if (colors.ContainsKey("punc")) { txtColorPunc.Text = colors["punc"]; SetColorPreview(rectColorPunc, colors["punc"]); }
-                if (colors.ContainsKey("cap")) { txtColorCap.Text = colors["cap"]; SetColorPreview(rectColorCap, colors["cap"]); }
-                if (colors.ContainsKey("dash")) { txtColorDash.Text = colors["dash"]; SetColorPreview(rectColorDash, colors["dash"]); }
-                if (colors.ContainsKey("data")) { txtColorData.Text = colors["data"]; SetColorPreview(rectColorData, colors["data"]); }
-                if (colors.ContainsKey("ital")) { txtColorItal.Text = colors["ital"]; SetColorPreview(rectColorItal, colors["ital"]); }
-                if (colors.ContainsKey("sub")) { txtColorSub.Text = colors["sub"]; SetColorPreview(rectColorSub, colors["sub"]); }
-                if (colors.ContainsKey("word")) { txtColorWord.Text = colors["word"]; SetColorPreview(rectColorWord, colors["word"]); }
-                if (colors.ContainsKey("keyword")) { txtColorKeyword.Text = colors["keyword"]; SetColorPreview(rectColorKeyword, colors["keyword"]); }
+                ProtectedRangeService.RefreshProtectedMarkers(doc);
+                ShadingManager.ClearModuleShading(doc, "keyword");
+
+                string searchableText = DocumentScanContext.GetText(doc);
+                string[] words = ParseKeywordTerms(keywords);
+                StringComparison comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+                foreach (string rawWord in words)
+                {
+                    string word = rawWord.Trim();
+                    if (string.IsNullOrEmpty(word))
+                    {
+                        continue;
+                    }
+
+                    int index = 0;
+                    while (index < searchableText.Length)
+                    {
+                        int matchIndex = searchableText.IndexOf(word, index, comparison);
+                        if (matchIndex < 0)
+                        {
+                            break;
+                        }
+
+                        int nextIndex = matchIndex + Math.Max(1, word.Length);
+                        if (wholeWord && !IsKeywordBoundaryMatch(searchableText, matchIndex, word.Length))
+                        {
+                            index = nextIndex;
+                            continue;
+                        }
+
+                        string matchedText = searchableText.Substring(matchIndex, word.Length);
+                        Word.Range range = DocumentScanContext.CreateRangeFromTextSpan(doc, matchIndex, word.Length, matchedText);
+                        if (range != null)
+                        {
+                            string issueId = Guid.NewGuid().ToString();
+                            CorrectionTracker.Instance.CreateBookmark(doc, issueId, range, "keyword");
+                            range.Shading.BackgroundPatternColor = SettingsManager.HexToWdColor(colorHex);
+                            count++;
+
+                            if (!foundByTerm.ContainsKey(word))
+                            {
+                                foundByTerm[word] = 0;
+                            }
+                            foundByTerm[word]++;
+                        }
+
+                        index = nextIndex;
+                    }
+                }
             }
 
-            BuildRuleTogglePanel(settings);
+            boxSearchStats.Visibility = Visibility.Visible;
+            txtSearchStatsResult.Text = BuildKeywordStatsText(count, foundByTerm);
+            ShowToast($"查找标记完成，共找到 {count} 处。");
+        }
+
+        private static string[] ParseKeywordTerms(string keywords)
+        {
+            return (keywords ?? string.Empty).Split(
+                new[] { ',', '，', ';', '；', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        private static bool IsKeywordBoundaryMatch(string text, int start, int length)
+        {
+            int end = start + length;
+            bool leftOk = start <= 0 || !IsKeywordWordChar(text[start - 1]);
+            bool rightOk = end >= text.Length || !IsKeywordWordChar(text[end]);
+            return leftOk && rightOk;
+        }
+
+        private static bool IsKeywordWordChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_' || c == '-';
+        }
+
+        private static string BuildKeywordStatsText(int totalCount, Dictionary<string, int> foundByTerm)
+        {
+            if (foundByTerm == null || foundByTerm.Count == 0)
+            {
+                return $"共查找到并标记了 {totalCount} 处匹配的关键词。";
+            }
+
+            var parts = new List<string>();
+            foreach (var item in foundByTerm)
+            {
+                parts.Add(item.Key + " " + item.Value + "处");
+            }
+
+            return $"共查找到并标记了 {totalCount} 处匹配的关键词：" + string.Join("；", parts);
+        }
+
+        private void LoadSettingsToUI()
+        {
+            isLoadingSettings = true;
+            try
+            {
+                var settings = SettingsManager.Current;
+                SyncLegacySettingsFromRuleToggles(settings);
+
+                txtWhitelistCasing.Text = settings.WhitelistCasing;
+                txtWhitelistAcronyms.Text = settings.WhitelistAcronyms;
+
+                sldCasingRatio.Value = settings.CasingRatioThreshold;
+                txtCasingRatioVal.Text = settings.CasingRatioThreshold + "%";
+
+                txtAcronymLag.Text = settings.MaxAcronymLagCharacters.ToString();
+
+                // Load Colors
+                var colors = settings.Colors;
+                if (colors != null)
+                {
+                    if (colors.ContainsKey("punc")) { txtColorPunc.Text = colors["punc"]; SetColorPreview(rectColorPunc, colors["punc"]); }
+                    if (colors.ContainsKey("cap")) { txtColorCap.Text = colors["cap"]; SetColorPreview(rectColorCap, colors["cap"]); }
+                    if (colors.ContainsKey("dash")) { txtColorDash.Text = colors["dash"]; SetColorPreview(rectColorDash, colors["dash"]); }
+                    if (colors.ContainsKey("data")) { txtColorData.Text = colors["data"]; SetColorPreview(rectColorData, colors["data"]); }
+                    if (colors.ContainsKey("ital")) { txtColorItal.Text = colors["ital"]; SetColorPreview(rectColorItal, colors["ital"]); }
+                    if (colors.ContainsKey("sub")) { txtColorSub.Text = colors["sub"]; SetColorPreview(rectColorSub, colors["sub"]); }
+                    if (colors.ContainsKey("word")) { txtColorWord.Text = colors["word"]; SetColorPreview(rectColorWord, colors["word"]); }
+                    if (colors.ContainsKey("keyword")) { txtColorKeyword.Text = colors["keyword"]; SetColorPreview(rectColorKeyword, colors["keyword"]); }
+                }
+
+                BuildRuleTogglePanel(settings);
+            }
+            finally
+            {
+                isLoadingSettings = false;
+            }
         }
 
         private void SaveSettings_Click(object sender, RoutedEventArgs e)
@@ -816,10 +969,35 @@ namespace Manuscript_guide.UI
 
             SettingsManager.Save();
             ShowToast("系统高级设置已保存并应用。");
+
+            // Automatically switch back to the active scan panel or full scan panel and re-run scan
+            if (!string.IsNullOrEmpty(currentModuleType))
+            {
+                if (currentModuleType == "all")
+                {
+                    OnFullScanRequested();
+                }
+                else if (currentModuleType != "keyword" && currentModuleType != "rules")
+                {
+                    ShowPanel("active");
+                    txtTitleText.Text = "专项检测 - " + DiagnosticModuleRegistry.GetDisplayName(currentModuleType);
+                    txtTitleIcon.Text = DiagnosticModuleRegistry.GetIcon(currentModuleType);
+                    RunActiveScan(currentModuleType);
+                }
+                else
+                {
+                    ShowPanel("overview");
+                }
+            }
+            else
+            {
+                ShowPanel("overview");
+            }
         }
 
         private void BuildRuleTogglePanel(PluginSettings settings)
         {
+            ruleCheckBoxes.Clear();
             if (panelRuleToggles == null)
             {
                 return;
@@ -880,6 +1058,7 @@ namespace Manuscript_guide.UI
                     ToolTip = rule.Description,
                     Margin = new Thickness(0, 0, 0, 4)
                 };
+                ruleCheckBoxes.Add(checkBox);
 
                 TextBlock description = new TextBlock
                 {
@@ -935,6 +1114,8 @@ namespace Manuscript_guide.UI
                 ToolTip = "默认模式。正文保留普通数字字符，并通过 Word Font.Subscript 或 Font.Superscript 显示为角标，适合正式论文排版。"
             };
 
+            radUseNativeSubscript.Checked += SubscriptOutputMode_Checked;
+
             TextBlock nativeDescription = new TextBlock
             {
                 Text = "保留 WSe2、cm-3 等普通文本字符；修复时通过 Word 原生字体属性显示下标或上标。",
@@ -956,6 +1137,8 @@ namespace Manuscript_guide.UI
                 ToolTip = "纯文本兼容模式。修复时直接输出 ¹、²、³、₂、₃ 等特殊 Unicode 角标字符。"
             };
 
+            radUseUnicodeSubscript.Checked += SubscriptOutputMode_Checked;
+
             TextBlock unicodeDescription = new TextBlock
             {
                 Text = "直接写入 Unicode 角标字符，仅建议在纯文本兼容或无法保留 Word 字体属性的场景中使用。",
@@ -973,6 +1156,26 @@ namespace Manuscript_guide.UI
             stack.Children.Add(unicodeDescription);
             row.Child = stack;
             ruleStack.Children.Add(row);
+        }
+
+        private void SubscriptOutputMode_Checked(object sender, RoutedEventArgs e)
+        {
+            if (isLoadingSettings || radUseNativeSubscript == null || radUseUnicodeSubscript == null)
+            {
+                return;
+            }
+
+            var settings = SettingsManager.Current;
+            bool useNative = radUseNativeSubscript.IsChecked == true;
+            if (settings.UseNativeSubscript == useNative)
+            {
+                return;
+            }
+
+            settings.UseNativeSubscript = useNative;
+            SettingsManager.Save();
+            PopulateModuleConfigPanel(string.IsNullOrEmpty(currentModuleType) ? "sub" : currentModuleType);
+            ShowToast(useNative ? "角标类型已切换为 Word 原生角标。" : "角标类型已切换为 Unicode 角标字符。");
         }
 
         private bool GetRuleEnabled(PluginSettings settings, DiagnosticRuleDefinition rule)
@@ -997,7 +1200,13 @@ namespace Manuscript_guide.UI
                 settings.EnabledRules = new Dictionary<string, bool>();
             }
 
-            SaveRuleTogglePanelRecursive(panelRuleToggles, settings);
+            foreach (var checkBox in ruleCheckBoxes)
+            {
+                if (checkBox.Tag is string key)
+                {
+                    settings.EnabledRules[key] = checkBox.IsChecked == true;
+                }
+            }
         }
 
         private void SaveRuleTogglePanelRecursive(DependencyObject parent, PluginSettings settings)

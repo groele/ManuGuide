@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.Office.Interop.Word;
 using Manuscript_guide.Models;
 using Manuscript_guide.Services;
@@ -20,45 +20,66 @@ namespace Manuscript_guide.Scanners
         {
             DocumentScanContext.RecordCandidate(moduleType, subtype);
 
-            if (doc == null || string.IsNullOrEmpty(documentText) || start < 0 || length <= 0)
+            if (string.IsNullOrEmpty(documentText) || start < 0 || length <= 0)
             {
                 DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.InvalidRange);
                 return null;
             }
 
-            if (start + length > documentText.Length)
+            // High Performance: Use snapshot for protection and verification if available
+            var context = DocumentScanContext.Current;
+            if (context != null && context.Snapshot != null)
             {
-                DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.InvalidRange);
-                return null;
+                var snapshot = context.Snapshot;
+                if (start + length > snapshot.FullText.Length)
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.InvalidRange);
+                    return null;
+                }
+
+                string actualText = snapshot.FullText.Substring(start, length);
+                if (!string.Equals(actualText, originalText, StringComparison.Ordinal))
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.RangeMismatch);
+                    return null;
+                }
+
+                if (snapshot.ProtectedRanges.Intersects(start, start + length))
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.ProtectedRange);
+                    return null;
+                }
+            }
+            else
+            {
+                // Fallback (only used if running outside a snapshot context)
+                if (start + length > documentText.Length)
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.InvalidRange);
+                    return null;
+                }
+
+                string actualText = documentText.Substring(start, length);
+                if (!string.Equals(actualText, originalText, StringComparison.Ordinal))
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.RangeMismatch);
+                    return null;
+                }
+
+                if (ProtectedRangeService.IsRangeProtected(doc, start, start + length))
+                {
+                    DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.ProtectedRange);
+                    return null;
+                }
             }
 
-            string issueId = Guid.NewGuid().ToString();
-            Range range = DocumentScanContext.CreateRangeFromTextSpan(doc, start, length, originalText);
-            if (range == null)
-            {
-                DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.RangeMismatch);
-                return null;
-            }
-
-            if (ProtectedRangeService.IsRangeProtected(range))
-            {
-                DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.ProtectedRange);
-                return null;
-            }
-
-            string bookmarkName = CorrectionTracker.Instance.CreateBookmark(doc, issueId, range, moduleType);
-            if (string.IsNullOrEmpty(bookmarkName))
-            {
-                DocumentScanContext.RecordSkip(moduleType, subtype, ScannerSkipReason.BookmarkFailed);
-                return null;
-            }
-
-            ShadingManager.ApplyActiveShading(range, moduleType);
+            // v2.3 Core Principle: Separate scanning from Word COM modifications.
+            // NO Bookmark creation or Active Shading is performed here.
             DocumentScanContext.RecordIssue(moduleType, subtype);
 
             return new IssueItem
             {
-                IssueId = issueId,
+                IssueId = Guid.NewGuid().ToString(),
                 Type = moduleType,
                 Subtype = subtype,
                 Start = start,
@@ -80,15 +101,15 @@ namespace Manuscript_guide.Scanners
             string recommendFix,
             string description)
         {
-            if (doc == null || range == null || string.IsNullOrEmpty(documentText))
+            if (range == null || string.IsNullOrEmpty(documentText))
             {
                 return null;
             }
 
+            // Use context position mapping
             int start = DocumentScanContext.DocumentPositionToTextOffset(doc, range.Start);
             int length = Math.Max(1, range.End - range.Start);
             return Create(doc, documentText, moduleType, subtype, start, length, originalText, recommendFix, description);
         }
     }
 }
-

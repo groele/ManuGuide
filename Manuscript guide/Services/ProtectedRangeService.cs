@@ -291,15 +291,19 @@ namespace Manuscript_guide.Services
             {
                 foreach (Field field in doc.Fields)
                 {
-                    string codeText = GetFieldCodeText(field);
+                    Range codeRange = field.Code;
+                    if (codeRange == null) continue;
+
+                    string codeText = codeRange.Text ?? string.Empty;
                     if (!ContainsAnyMarker(codeText, CitationFieldMarkers))
                     {
                         continue;
                     }
 
-                    AddFieldCombinedRange(ranges, field, "citation-field");
-                    AddRange(ranges, field.Code, "citation-code");
-                    AddRange(ranges, field.Result, "citation-result");
+                    Range resultRange = field.Result;
+                    AddFieldCombinedRange(ranges, codeRange, resultRange, "citation-field");
+                    AddRange(ranges, codeRange, "citation-code");
+                    AddRange(ranges, resultRange, "citation-result");
                 }
             }
             catch
@@ -313,15 +317,19 @@ namespace Manuscript_guide.Services
             {
                 foreach (Field field in doc.Fields)
                 {
-                    string codeText = GetFieldCodeText(field);
+                    Range codeRange = field.Code;
+                    if (codeRange == null) continue;
+
+                    string codeText = codeRange.Text ?? string.Empty;
                     if (!ContainsAnyMarker(codeText, FormulaFieldMarkers))
                     {
                         continue;
                     }
 
-                    AddFieldCombinedRange(ranges, field, "formula-field");
-                    AddRange(ranges, field.Code, "formula-code");
-                    AddRange(ranges, field.Result, "formula-result");
+                    Range resultRange = field.Result;
+                    AddFieldCombinedRange(ranges, codeRange, resultRange, "formula-field");
+                    AddRange(ranges, codeRange, "formula-code");
+                    AddRange(ranges, resultRange, "formula-result");
                 }
             }
             catch
@@ -410,6 +418,49 @@ namespace Manuscript_guide.Services
         {
             try
             {
+                // Try native Find first (extremely fast O(1) matching)
+                string[] searchTerms = { "References", "Reference", "Bibliography", "Works Cited", "Literature Cited", "参考文献", "参考资料" };
+                foreach (string term in searchTerms)
+                {
+                    Range findRange = doc.Content;
+                    Find find = findRange.Find;
+                    find.ClearFormatting();
+                    find.Text = term;
+                    find.MatchCase = false;
+                    find.MatchWholeWord = false; // Set to false to support CJK and compound phrases robustly
+                    find.Forward = true;
+                    find.Wrap = WdFindWrap.wdFindStop;
+
+                    while (find.Execute())
+                    {
+                        Paragraph p = findRange.Paragraphs[1];
+                        string text = p.Range.Text ?? string.Empty;
+                        string normalized = text.Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
+                        if (ReferencesHeadingRegex.IsMatch(normalized))
+                        {
+                            ranges.Add(new ProtectedTextRange
+                            {
+                                Start = p.Range.Start,
+                                End = doc.Content.End,
+                                Source = "references-heading"
+                            });
+                            return;
+                        }
+
+                        int nextStart = findRange.End;
+                        if (nextStart >= doc.Content.End) break;
+                        findRange.SetRange(nextStart, doc.Content.End);
+                        find = findRange.Find;
+                        find.ClearFormatting();
+                        find.Text = term;
+                        find.MatchCase = false;
+                        find.MatchWholeWord = false;
+                        find.Forward = true;
+                        find.Wrap = WdFindWrap.wdFindStop;
+                    }
+                }
+
+                // Fallback: slow linear paragraph iteration
                 foreach (Paragraph paragraph in doc.Paragraphs)
                 {
                     string text = paragraph.Range.Text ?? string.Empty;
@@ -428,18 +479,6 @@ namespace Manuscript_guide.Services
             }
             catch
             {
-            }
-        }
-
-        private static string GetFieldCodeText(Field field)
-        {
-            try
-            {
-                return field.Code == null ? string.Empty : field.Code.Text ?? string.Empty;
-            }
-            catch
-            {
-                return string.Empty;
             }
         }
 
@@ -486,12 +525,13 @@ namespace Manuscript_guide.Services
             }
         }
 
-        private static void AddFieldCombinedRange(List<ProtectedTextRange> ranges, Field field, string source)
+        private static void AddFieldCombinedRange(List<ProtectedTextRange> ranges, Range codeRange, Range resultRange, string source)
         {
+            if (codeRange == null || resultRange == null) return;
             try
             {
-                int start = Math.Min(field.Code.Start, field.Result.Start);
-                int end = Math.Max(field.Code.End, field.Result.End);
+                int start = Math.Min(codeRange.Start, resultRange.Start);
+                int end = Math.Max(codeRange.End, resultRange.End);
                 if (end > start)
                 {
                     ranges.Add(new ProtectedTextRange

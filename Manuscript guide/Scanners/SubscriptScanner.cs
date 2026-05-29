@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Microsoft.Office.Interop.Word;
@@ -33,7 +33,7 @@ namespace Manuscript_guide.Scanners
         };
 
         private static readonly Regex UnicodeSubSupRegex = new Regex(
-            @"(?<![A-Za-z0-9_])(?:[A-Za-z]+[₀₁₂₃₄₅₆₇₈₉ₓ]+|[A-Za-z]+[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼]+)(?![A-Za-z0-9_])",
+            @"(?<![A-Za-z0-9_])(?:[A-Za-z0-9_]|[₀₁₂₃₄₅₆₇₈₉ₓ]|[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼])*(?:[₀₁₂₃₄₅₆₇₈₉ₓ]|[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼])(?:[A-Za-z0-9_]|[₀₁₂₃₄₅₆₇₈₉ₓ]|[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼])*(?![A-Za-z0-9_])",
             RegexOptions.Compiled);
 
         private static readonly Regex ElementFormulaRegex = new Regex(
@@ -55,39 +55,33 @@ namespace Manuscript_guide.Scanners
             if (string.IsNullOrEmpty(text)) return issues;
             PluginSettings settings = SettingsManager.Current;
 
+            var context = DocumentScanContext.Current;
+            var snapshot = context?.Snapshot;
+
             // --- 1. Unicode Subscript/Superscript Detection ---
-            // Subscripts: ₀₁₂₃₄₅₆₇₈₉ₓ
-            // Superscripts: ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼
             if (SettingsManager.IsRuleEnabled(ModuleType, "unicode_subsup_to_native"))
             {
                 foreach (Match match in UnicodeSubSupRegex.Matches(text))
                 {
                     string origText = match.Value;
-                    // Determine sub-type
                     string formatType = "chemical";
                     if (Regex.IsMatch(origText, @"[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼]"))
                     {
                         formatType = "unit";
                     }
 
-                    // Predict clean translation recommendation
                     string recommend = settings.UseNativeSubscript
                         ? SubscriptFormatter.ConvertToAsciiText(origText, formatType)
                         : origText;
 
-                    string description = settings.UseNativeSubscript
-                        ? $"当前正文角标规范为 Word 原生角标。检测到 Unicode 编码的上下标字符“{origText}”，建议转换为标准 ASCII 字符并应用 Word 原生上下标格式。"
-                        : $"当前正文角标规范为 Unicode 角标字符。检测到 Unicode 编码的上下标字符“{origText}”，此项作为全文角标复核命中；如需改用 Word 原生角标，可在高级设置中切换输出方式。";
+                    string description = $"当前正文角标规范为 Word 原生角标。检测到 Unicode 编码的上下标字符“{origText}”，建议转换为标准 ASCII 字符并应用 Word 原生上下标格式。";
 
-                    AddIssue(doc, text, issues, "UnicodeSubscript", match.Index, match.Length, origText, recommend,
-                        description);
+                    AddIssue(doc, text, "UnicodeSubscript", match.Index, match.Length, origText, recommend,
+                        description, issues);
                 }
             }
 
             // --- 2. Element-driven Chemical Formula Digits Missing Subscripts ---
-            // Based on Element subscript conversion.js: only accept tokens that can be
-            // fully segmented into valid chemical element symbols. This catches WSe2,
-            // MoS2, Bi2O2Se, CuInP2S6, and avoids ordinary prose words.
             if (SettingsManager.IsRuleEnabled(ModuleType, "element_formula_subscript"))
             {
                 foreach (Match match in ElementFormulaRegex.Matches(text))
@@ -107,15 +101,27 @@ namespace Manuscript_guide.Scanners
                         continue;
                     }
 
-                    Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, formula);
-                    if (r == null)
+                    bool hasUnformattedDigit = false;
+                    if (!settings.UseNativeSubscript)
                     {
-                        DocumentScanContext.RecordCandidate(ModuleType, "ChemicalSubscriptMissing");
-                        DocumentScanContext.RecordSkip(ModuleType, "ChemicalSubscriptMissing", ScannerSkipReason.RangeMismatch);
-                        continue;
+                        // In Unicode subscript mode, any ASCII digits in the formula are considered incorrect and need conversion
+                        hasUnformattedDigit = true;
                     }
-
-                    bool hasUnformattedDigit = HasUnformattedFormulaDigit(r);
+                    else if (snapshot != null)
+                    {
+                        hasUnformattedDigit = HasUnformattedFormulaDigit(snapshot, match.Index, match.Length);
+                    }
+                    else
+                    {
+                        Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, formula);
+                        if (r == null)
+                        {
+                            DocumentScanContext.RecordCandidate(ModuleType, "ChemicalSubscriptMissing");
+                            DocumentScanContext.RecordSkip(ModuleType, "ChemicalSubscriptMissing", ScannerSkipReason.RangeMismatch);
+                            continue;
+                        }
+                        hasUnformattedDigit = HasUnformattedFormulaDigitFallback(r);
+                    }
 
                     if (hasUnformattedDigit)
                     {
@@ -123,7 +129,7 @@ namespace Manuscript_guide.Scanners
                         string description = settings.UseNativeSubscript
                             ? $"当前正文角标规范为 Word 原生角标。检测到由合法元素符号组成的化学式“{formula}”，其中数字未进行下标格式化；建议保留 ASCII 文本并应用 Word 原生下标。"
                             : $"当前正文角标规范为 Unicode 角标字符。检测到由合法元素符号组成的化学式“{formula}”，建议直接改写为“{SubscriptFormatter.ConvertToUnicodeSubSup(formula, "chemical")}”。";
-                        AddIssue(doc, text, issues, "ChemicalSubscriptMissing", match.Index, match.Length, formula, recommendation, description);
+                        AddIssue(doc, text, "ChemicalSubscriptMissing", match.Index, match.Length, formula, recommendation, description, issues);
                     }
                     else
                     {
@@ -134,9 +140,6 @@ namespace Manuscript_guide.Scanners
             }
 
             // --- 3. Academic Descriptive Subscripts Uprighting ---
-            // Eg -> Eg, Eg (gap), Fermi level EF, Boltzmann constant kB, gate voltage Vg, Rs, IPL
-            // Often typed as "Eg", "EF", "kB", "Vg", "Rs", "IPL" in raw manuscripts
-            // We search for these patterns
             if (SettingsManager.IsRuleEnabled(ModuleType, "descriptive_subscript"))
             {
                 foreach (Match match in DescriptiveSubscriptRegex.Matches(text))
@@ -149,30 +152,45 @@ namespace Manuscript_guide.Scanners
                         continue;
                     }
 
-                    Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, word);
-                    if (r == null)
-                    {
-                        DocumentScanContext.RecordCandidate(ModuleType, "DescriptiveSubscript");
-                        DocumentScanContext.RecordSkip(ModuleType, "DescriptiveSubscript", ScannerSkipReason.RangeMismatch);
-                        continue;
-                    }
-
-                    // Check if it's already formatted correctly (first char italic, rest subscript + upright)
                     bool needFormatting = true;
-                    if (r.Characters.Count > 1)
+                    if (snapshot != null)
                     {
-                        Range subPart = doc.Range(r.Characters[2].Start, r.End);
-                        // If subpart is already Subscript and NOT Italic, then it's correct!
-                        if (subPart.Font.Subscript == 1 && subPart.Font.Italic == 0)
+                        int start = match.Index;
+                        int length = match.Length;
+                        if (length > 1)
                         {
-                            needFormatting = false;
+                            bool isSubscript = snapshot.Subscripts.IsSpanFullyCovered(start + 1, start + length);
+                            bool isItalic = snapshot.Italics.HasAnyFormatting(start + 1, start + length);
+                            if (isSubscript && !isItalic)
+                            {
+                                needFormatting = false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Index, match.Length, word);
+                        if (r == null)
+                        {
+                            DocumentScanContext.RecordCandidate(ModuleType, "DescriptiveSubscript");
+                            DocumentScanContext.RecordSkip(ModuleType, "DescriptiveSubscript", ScannerSkipReason.RangeMismatch);
+                            continue;
+                        }
+
+                        if (word.Length > 1)
+                        {
+                            Range subPart = doc.Range(r.Start + 1, r.End);
+                            if (subPart.Font.Subscript == 1 && subPart.Font.Italic == 0)
+                            {
+                                needFormatting = false;
+                            }
                         }
                     }
 
                     if (needFormatting)
                     {
-                        AddIssue(doc, text, issues, "DescriptiveSubscript", match.Index, match.Length, word, word,
-                            $"学术描述性角标“{word}”格式不规范。按照学术标准，表示物理意义的角标（如 gap 缩写 g，Bohr 缩写 B）必须设为【正体下标】（如 $E_\\mathrm{{g}}$、$k_\\mathrm{{B}}$），而非斜体或普通字符。");
+                        AddIssue(doc, text, "DescriptiveSubscript", match.Index, match.Length, word, word,
+                            $"学术描述性角标“{word}”格式不规范。按照学术标准，表示物理意义的角标（如 gap 缩写 g，Bohr 缩写 B）必须设为【正体下标】（如 $E_\\mathrm{{g}}$、$k_\\mathrm{{B}}$），而非斜体或普通字符。", issues);
                     }
                     else
                     {
@@ -183,7 +201,6 @@ namespace Manuscript_guide.Scanners
             }
 
             // --- 4. LaTeX Style Inline上下标 Cleaner ---
-            // Matches constructs like E_g, T_{c}, or x^2
             if (SettingsManager.IsRuleEnabled(ModuleType, "latex_inline_subsup"))
             {
                 foreach (Match match in LatexInlineSubSupRegex.Matches(text))
@@ -196,10 +213,9 @@ namespace Manuscript_guide.Scanners
                         continue;
                     }
 
-                    // Extract recommendation
                     string cleanText = origText.Replace("_", "").Replace("^", "").Replace("{", "").Replace("}", "");
-                    AddIssue(doc, text, issues, "LaTeXStyleClean", match.Index, match.Length, origText, cleanText,
-                        $"检测到 LaTeX 风格的行内上下标表达式“{origText}”。建议去除下划线或上标符，并在 Word 中自动应用原生的上下标排版属性。");
+                    AddIssue(doc, text, "LaTeXStyleClean", match.Index, match.Length, origText, cleanText,
+                        $"检测到 LaTeX 风格的行内上下标表达式“{origText}”。建议去除下划线或上标符，并在 Word 中自动应用原生的上下标排版属性。", issues);
                 }
             }
 
@@ -285,18 +301,47 @@ namespace Manuscript_guide.Scanners
             return Regex.IsMatch(before, @"(?:Fig\.?|Figs\.?|Figure|Figures|Table|Tables|Scheme|Schemes|Supplementary|Movie)\s*$", RegexOptions.IgnoreCase);
         }
 
-        private static bool HasUnformattedFormulaDigit(Range range)
+        private static bool HasUnformattedFormulaDigit(DocumentSnapshot snapshot, int start, int length)
         {
-            for (int i = 1; i <= range.Characters.Count; i++)
+            for (int i = 0; i < length; i++)
             {
-                Range c = range.Characters[i];
-                string ct = c.Text;
-                if (ct.Length == 1 && char.IsDigit(ct[0]) && c.Font.Subscript != 1)
+                char c = snapshot.FullText[start + i];
+                if (char.IsDigit(c))
                 {
-                    return true;
+                    if (!snapshot.Subscripts.IsSpanFullyCovered(start + i, start + i + 1))
+                    {
+                        return true;
+                    }
                 }
             }
+            return false;
+        }
 
+        private static bool HasUnformattedFormulaDigitFallback(Range range)
+        {
+            try
+            {
+                Range findRange = range.Duplicate;
+                Find find = findRange.Find;
+                find.ClearFormatting();
+                find.Text = "^#"; // Any digit
+                find.Forward = true;
+                find.Wrap = WdFindWrap.wdFindStop;
+
+                while (find.Execute())
+                {
+                    if (findRange.Start >= range.End) break;
+                    if (findRange.Font.Subscript != 1)
+                    {
+                        return true;
+                    }
+                    findRange.Collapse(WdCollapseDirection.wdCollapseEnd);
+                    findRange.End = range.End;
+                }
+            }
+            catch
+            {
+            }
             return false;
         }
 
@@ -354,7 +399,7 @@ namespace Manuscript_guide.Scanners
             return text.Substring(start, end - start);
         }
 
-        private void AddIssue(Document doc, string text, List<IssueItem> issues, string subtype, int start, int length, string originalText, string recommendFix, string description)
+        private void AddIssue(Document doc, string text, string subtype, int start, int length, string originalText, string recommendFix, string description, List<IssueItem> issues)
         {
             IssueItem issue = IssueMatchFactory.Create(
                 doc,
@@ -373,4 +418,3 @@ namespace Manuscript_guide.Scanners
         }
     }
 }
-
