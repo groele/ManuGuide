@@ -25,6 +25,9 @@ namespace Manuscript_guide.UI
         private RadioButton radUseUnicodeSubscript;
         private readonly List<CheckBox> ruleCheckBoxes = new List<CheckBox>();
         private bool isLoadingSettings;
+        private const int MaxKeywordWordMarkers = 500;
+        private const int MaxKeywordTextMatches = 20000;
+        private const int MaxDiagnosticWordMarkers = 500;
 
         public TaskPaneWPFControl()
         {
@@ -192,6 +195,11 @@ namespace Manuscript_guide.UI
                     {
                         foreach (var issue in currentIssues)
                         {
+                            if (marked >= MaxDiagnosticWordMarkers)
+                            {
+                                break;
+                            }
+
                             Word.Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, issue.Start, issue.End - issue.Start, issue.OriginalText);
                             if (r != null)
                             {
@@ -277,6 +285,11 @@ namespace Manuscript_guide.UI
                     {
                         foreach (var issue in currentIssues)
                         {
+                            if (marked >= MaxDiagnosticWordMarkers)
+                            {
+                                break;
+                            }
+
                             Word.Range r = DocumentScanContext.CreateRangeFromTextSpan(doc, issue.Start, issue.End - issue.Start, issue.OriginalText);
                             if (r != null)
                             {
@@ -717,7 +730,7 @@ namespace Manuscript_guide.UI
                     bool useLegacyWordFind = false;
                     if (!useLegacyWordFind)
                     {
-                        RunKeywordSearchByTextIndex(doc, keywords, caseSensitive, wholeWord, colorHex);
+                        RunKeywordSearchOptimized(doc, keywords, caseSensitive, wholeWord, colorHex);
                     }
                     else
                     {
@@ -863,6 +876,204 @@ namespace Manuscript_guide.UI
             ShowToast($"查找标记完成，共找到 {count} 处。");
         }
 
+        private void RunKeywordSearchOptimized(Word.Document doc, string keywords, bool caseSensitive, bool wholeWord, string colorHex)
+        {
+            int totalCount = 0;
+            int markedCount = 0;
+            Dictionary<string, int> foundByTerm = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            using (DocumentScanContext.Begin(doc))
+            {
+                ProtectedRangeService.RefreshProtectedMarkers(doc);
+                ShadingManager.ClearModuleShading(doc, "keyword");
+
+                string searchableText = DocumentScanContext.GetText(doc);
+                var matcher = KeywordAhoCorasickMatcher.Build(ParseKeywordTermsFast(keywords), caseSensitive);
+
+                foreach (KeywordMatch match in matcher.FindMatches(searchableText))
+                {
+                    if (wholeWord && !IsKeywordBoundaryMatch(searchableText, match.Start, match.Length))
+                    {
+                        continue;
+                    }
+
+                    totalCount++;
+                    if (!foundByTerm.ContainsKey(match.Term))
+                    {
+                        foundByTerm[match.Term] = 0;
+                    }
+                    foundByTerm[match.Term]++;
+
+                    if (markedCount < MaxKeywordWordMarkers)
+                    {
+                        string matchedText = searchableText.Substring(match.Start, match.Length);
+                        Word.Range range = DocumentScanContext.CreateRangeFromTextSpan(doc, match.Start, match.Length, matchedText);
+                        if (range != null)
+                        {
+                            range.Shading.BackgroundPatternColor = SettingsManager.HexToWdColor(colorHex);
+                            markedCount++;
+                        }
+                    }
+
+                    if (totalCount >= MaxKeywordTextMatches)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            boxSearchStats.Visibility = Visibility.Visible;
+            txtSearchStatsResult.Text = BuildKeywordStatsText(totalCount, markedCount, foundByTerm);
+            ShowToast($"关键词检索完成：找到 {totalCount} 处，已标记 {markedCount} 处。");
+        }
+
+        private sealed class KeywordMatch
+        {
+            public int Start { get; set; }
+            public int Length { get; set; }
+            public string Term { get; set; }
+        }
+
+        private sealed class KeywordAhoCorasickMatcher
+        {
+            private readonly KeywordNode root;
+            private readonly bool caseSensitive;
+
+            private KeywordAhoCorasickMatcher(KeywordNode root, bool caseSensitive)
+            {
+                this.root = root;
+                this.caseSensitive = caseSensitive;
+            }
+
+            public static KeywordAhoCorasickMatcher Build(IEnumerable<string> terms, bool caseSensitive)
+            {
+                KeywordNode root = new KeywordNode();
+                HashSet<string> seen = new HashSet<string>(caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
+
+                foreach (string rawTerm in terms)
+                {
+                    string term = (rawTerm ?? string.Empty).Trim();
+                    if (term.Length == 0 || !seen.Add(term))
+                    {
+                        continue;
+                    }
+
+                    KeywordNode node = root;
+                    foreach (char rawChar in term)
+                    {
+                        char c = Normalize(rawChar, caseSensitive);
+                        if (!node.Next.TryGetValue(c, out KeywordNode next))
+                        {
+                            next = new KeywordNode();
+                            node.Next[c] = next;
+                        }
+                        node = next;
+                    }
+
+                    node.Outputs.Add(new KeywordOutput { Term = term, Length = term.Length });
+                }
+
+                Queue<KeywordNode> queue = new Queue<KeywordNode>();
+                foreach (KeywordNode child in root.Next.Values)
+                {
+                    child.Fail = root;
+                    queue.Enqueue(child);
+                }
+
+                while (queue.Count > 0)
+                {
+                    KeywordNode current = queue.Dequeue();
+                    foreach (var edge in current.Next)
+                    {
+                        char c = edge.Key;
+                        KeywordNode target = edge.Value;
+                        KeywordNode fallback = current.Fail;
+
+                        while (fallback != null && fallback != root && !fallback.Next.ContainsKey(c))
+                        {
+                            fallback = fallback.Fail;
+                        }
+
+                        if (fallback != null && fallback.Next.TryGetValue(c, out KeywordNode failTarget) && failTarget != target)
+                        {
+                            target.Fail = failTarget;
+                        }
+                        else
+                        {
+                            target.Fail = root;
+                        }
+
+                        foreach (KeywordOutput output in target.Fail.Outputs)
+                        {
+                            target.Outputs.Add(output);
+                        }
+
+                        queue.Enqueue(target);
+                    }
+                }
+
+                return new KeywordAhoCorasickMatcher(root, caseSensitive);
+            }
+
+            public IEnumerable<KeywordMatch> FindMatches(string text)
+            {
+                if (string.IsNullOrEmpty(text))
+                {
+                    yield break;
+                }
+
+                KeywordNode node = root;
+                for (int i = 0; i < text.Length; i++)
+                {
+                    char c = Normalize(text[i], caseSensitive);
+                    while (node != root && !node.Next.ContainsKey(c))
+                    {
+                        node = node.Fail ?? root;
+                    }
+
+                    if (node.Next.TryGetValue(c, out KeywordNode next))
+                    {
+                        node = next;
+                    }
+
+                    foreach (KeywordOutput output in node.Outputs)
+                    {
+                        yield return new KeywordMatch
+                        {
+                            Start = i - output.Length + 1,
+                            Length = output.Length,
+                            Term = output.Term
+                        };
+                    }
+                }
+            }
+
+            private static char Normalize(char c, bool caseSensitive)
+            {
+                return caseSensitive ? c : char.ToUpperInvariant(c);
+            }
+        }
+
+        private sealed class KeywordNode
+        {
+            public Dictionary<char, KeywordNode> Next { get; } = new Dictionary<char, KeywordNode>();
+            public KeywordNode Fail { get; set; }
+            public List<KeywordOutput> Outputs { get; } = new List<KeywordOutput>();
+        }
+
+        private sealed class KeywordOutput
+        {
+            public string Term { get; set; }
+            public int Length { get; set; }
+        }
+
+        private static string[] ParseKeywordTermsFast(string keywords)
+        {
+            return (keywords ?? string.Empty).Split(
+                new[] { ',', '\uFF0C', ';', '\uFF1B', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries);
+        }
+
         private static string[] ParseKeywordTerms(string keywords)
         {
             return (keywords ?? string.Empty).Split(
@@ -897,6 +1108,17 @@ namespace Manuscript_guide.UI
             }
 
             return $"共查找到并标记了 {totalCount} 处匹配的关键词：" + string.Join("；", parts);
+        }
+
+        private static string BuildKeywordStatsText(int totalCount, int markedCount, Dictionary<string, int> foundByTerm)
+        {
+            string baseText = BuildKeywordStatsText(totalCount, foundByTerm);
+            if (markedCount >= totalCount)
+            {
+                return baseText;
+            }
+
+            return baseText + $" 为避免大文档卡顿，本次只写入前 {markedCount} 处 Word 高亮；完整命中数已在统计中保留。";
         }
 
         private void LoadSettingsToUI()
